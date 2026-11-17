@@ -1,0 +1,173 @@
+{
+  "reference": "Moby/patternmatcher through maintainable-check 0.1.1",
+  "files": [
+    "foo/a.ts",
+    "foo/keep.ts",
+    "dir/foo/b.ts",
+    "dir/keep.ts",
+    "abc.ts",
+    "a.ts",
+    "b.ts",
+    "top.ts",
+    "#hash.ts"
+  ],
+  "cases": [
+    {
+      "pattern": "foo",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "/foo/",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "**/foo",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "*.ts",
+      "expected": [
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts"
+      ]
+    },
+    {
+      "pattern": "**/*.ts\n!dir/keep.ts",
+      "expected": [
+        "dir/keep.ts"
+      ]
+    },
+    {
+      "pattern": "dir\n!dir/keep.ts",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "dir/**\n!dir/keep.ts",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "**\n!dir/keep.ts",
+      "expected": [
+        "dir/keep.ts"
+      ]
+    },
+    {
+      "pattern": "a?c.ts",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "[ab].ts",
+      "expected": [
+        "#hash.ts",
+        "abc.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "./dir/../foo",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "foo/\n!foo/keep.ts",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "# comment\n\\#hash.ts",
+      "expected": [
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "foo/a.ts",
+        "foo/keep.ts",
+        "top.ts"
+      ]
+    },
+    {
+      "pattern": "\ufefffoo\r\n",
+      "expected": [
+        "#hash.ts",
+        "a.ts",
+        "abc.ts",
+        "b.ts",
+        "dir/foo/b.ts",
+        "dir/keep.ts",
+        "top.ts"
+      ]
+    }
+  ]
+}

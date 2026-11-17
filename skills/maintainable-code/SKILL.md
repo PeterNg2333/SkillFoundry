@@ -1,6 +1,6 @@
 ---
 name: maintainable-code
-description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture and phase planning, implementation, refactoring, handoffs, or Go CLI and AST/style/dependency checks selected by checkignore.json, Git/Docker ignores and file extensions."
+description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, or native Rust CLI and AST/style/dependency checks selected by checkignore.json, Git/Docker ignores and file extensions."
 ---
 
 # Maintainable Code
@@ -9,7 +9,7 @@ Make each agreed phase easy to understand, verify and continue. Apply the user's
 
 ## Maintain this skill
 
-The source of truth is `skills/maintainable-code/` in the `SkillFoundry` repository. The installed skill directory is a versioned runtime copy. Make reusable changes in the source checkout, run `sh build.sh`, package the skill with the repository's `scripts/package.sh`, then update the installed copy from that ZIP using `scripts/install.sh --replace`. The repository README owns distribution commands. Check `distribution.json` and `.installation.json` in an installed copy for its version, source revision and installation receipt.
+The source of truth is the `SkillFoundry` repository: `checker/` owns the Rust program, defaults, rules and fixtures; `skills/maintainable-code/` owns these instructions and references. The installed directory is a versioned runtime copy. Make reusable changes in the source checkout, run `sh scripts/build.sh` from its root, package with `sh scripts/package.sh maintainable-code`, then update the installed copy from that ZIP using `sh scripts/install.sh <archive> --replace`. The repository README owns distribution commands. Check `distribution.json` and `.installation.json` for version, source revision and installation receipt.
 
 ## Establish the current task
 
@@ -35,13 +35,13 @@ Keep related types, transformations, state and error handling together. Split at
 
 For each new helper, wrapper or shared abstraction, identify the responsibility it hides and its current callers. Introduce dependencies and folders with the slice that uses them. Keep a short linear flow together and comments focused on reasons or constraints.
 
-For TypeScript/JavaScript code or check configuration, read [typescript.md](references/typescript.md). It owns the required import-alias convention, const-arrow/export organization and type locality. For Go code and native checker changes, read [go.md](references/go.md) for explicit package/file ownership and idiomatic Go declarations. Other languages use their repository conventions.
+For TypeScript/JavaScript code or check configuration, read [typescript.md](references/typescript.md) for import aliases, const-arrow/export organization and type locality. For native checker changes, read [rust.md](references/rust.md) for file ownership and Rust conventions. For Go project code, read [go.md](references/go.md). Other languages use repository conventions.
 
 ## Verify the result
 
 Run the existing checks relevant to the changed behavior and inspect the actual diff. Tests should exercise public outcomes, meaningful edge cases and affected failure paths. Match verification to the changed boundary, including the actual entry point when integration behavior changes.
 
-For code changes, read [checks.md](references/checks.md) and choose the supplied checks for the affected scope. The Go CLI provides standalone native checks and shared selection. The JS/TS profile supplies its existing AST rules and uses that same selection. Apply `checkignore.json`, scoped `.gitignore`, root `.dockerignore` and extension routing before analysis. Report actual coverage, skipped reasons, metrics and remaining warnings. Keep reusable implementation, rules, dependencies and fixtures in this skill, with project settings in the target repository. Explain tooling cost, false positives or custom-rule maintenance when a check may be excessive. Review exclusion and rule changes as policy changes.
+For code changes, read [checks.md](references/checks.md) and choose the supplied native checks for the affected scope. The Rust executable owns selection and all parsing, including JS/TS AST rules. Apply `checkignore.json`, scoped `.gitignore`, root `.dockerignore` and extension routing before analysis. Report actual coverage, unsupported checks, skipped reasons, metrics and remaining warnings. Reusable implementation and fixtures belong to `checker/` in SkillFoundry; project settings belong to the target repository. Explain tooling cost, false positives or custom-rule maintenance when a check may be excessive. Review exclusion and rule changes as policy changes.
 
 Before handoff, trace one normal and one failure path. Locate their state owner and side effects. Consider one likely next change and where its edits would concentrate. Simplify flows that a maintainer would struggle to follow.
 

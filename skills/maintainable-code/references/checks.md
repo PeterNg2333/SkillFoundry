@@ -1,75 +1,62 @@
-# Supplied checker programs
+# Native checker
 
-The skill ships a Go CLI at `bin/maintainable-check.exe` on Windows, with source under `cmd/` and `internal/`. Its native checks run from that executable with embedded defaults. The existing Node profile at `scripts/check.mjs` supplies JS/TS syntax and style analysis. Both use the Go selector for paths, ignore files and extension routing.
+The installed skill supplies one Rust executable at `bin/maintainable-check.exe` on Windows or `bin/maintainable-check` on Linux/macOS. Defaults and AST rules are embedded. Running checks requires no Node, Go toolchain or package manager. Source lives in SkillFoundry's `checker/`.
 
-## Native Go CLI
+## Commands and coverage
 
-Resolve the executable from the skill directory and pass the target project through `--root`. Flags precede optional relative paths.
+Resolve the executable from the installed skill and pass the target project through `--root`. Flags precede optional relative paths.
 
-```powershell
+```sh
 maintainable-check capabilities --json
 maintainable-check select --root . --json
+maintainable-check check --root . --json
 maintainable-check check --root . --checks dependencies,json --json
+maintainable-check check --root . --checks javascript,typescript src
 maintainable-check check --root . --checks go,comments src
 ```
 
-| Check ID | Current scope | Result |
-|---|---|---|
-| `json` | JSON files | Strict syntax and error locations, including BOM handling. |
-| `dependencies` | `package.json`, `go.mod` | Runtime/dev/peer/optional counts and unique declared package names, or direct/indirect Go requirements. |
-| `go` | Go files | Standard Go parser/AST, gofmt comparison, import and function-declaration counts. |
-| `comments` | Go files | AST comment-group counts and an optional presence rule. Comment-like string literals remain strings. |
+| Check | Scope |
+|---|---|
+| `javascript`, `typescript` | Syntax, scoped prefer-const, const-arrow organization, bottom exports, type-only imports, cross-directory aliases, depth/complexity/line metrics |
+| `json`, `toml` | Strict syntax with source locations |
+| `dependencies` | Declared package groups and unique names in package.json/Cargo.toml; direct/indirect Go require declarations |
+| `go` | Embedded grammar syntax, imports and function/method counts |
+| `comments` | AST comment groups and optional presence rule for JS/TS/Go |
 
-Default native checks are `json,dependencies,go`. `--checks` chooses a subset. Unavailable check IDs are errors. The report lists selected versus actually checked files and per-check applicability. JS/TS structural rules use the Node profile today. Dependency metrics describe declarations in each selected manifest. Lockfile graph size and installed/transitive package counts are separate future checks.
+Default checks include all except `comments`; `--checks` selects a subset. Unknown or duplicate check IDs fail. Reports state selected, checked and unchecked files, per-check applicability and unsupported checks. `select` and `check --list` only list selection.
 
-## JS/TS AST profile
+Go formatting is explicitly unsupported and does not silently pass. Keep project gofmt/type-check/formatter/typed-lint/behavior commands for their boundaries. Dependency metrics count declarations, not installed/transitive graphs, vulnerabilities or bundle size. Go manifest inspection is limited to require directives. Native style metrics do not claim arbitrary ESLint plugin compatibility.
 
-```powershell
-node /path/to/maintainable-code/scripts/check.mjs --root .
-node /path/to/maintainable-code/scripts/check.mjs --root . --list --json
-node /path/to/maintainable-code/scripts/check.mjs --root . src/changed.ts
-```
+## Configuration and selection
 
-This profile supplies the pinned ESLint/parser dependencies and rules. It checks const-arrow bindings, function forms, separate bottom exports, type-only imports, and aliases for cross-directory static/dynamic imports and re-exports. Class methods, overloads, named Next-style defaults and Nest decorator metadata cases have fixtures. Depth, complexity and file size emit review warnings. JSON receives strict syntax checking. Go-family files are reported as requiring the native profile when using this entry point.
+Embedded defaults are owned by `checker/config/defaults.json` in the source checkout. A target project can provide `checkignore.json`, or select another JSON file with `--config`. It is parsed as data and never executed.
 
-Run the project's existing compiler, formatter, typed Promise/unsafe-value checks and relevant behavior tests for their owning boundaries. Comment usefulness, semantic ownership, alias runtime resolution and cohesion remain review topics.
+- Positive root-relative `ignore` globs add exclusions. Extension mappings and rule severity overrides merge with defaults.
+- Root/nested Git ignores retain scope, ordering, anchors and negations. Git excluded parents stay pruned. Patterns apply to selected paths, including tracked files.
+- Root Docker ignore has context-root matching and negations that may restore descendants. Set `--root` to the intended context. Dockerfile-specific contexts and global user Git exclusions are outside current coverage.
+- Explicit paths use the same policy and must stay within root. JSON skip reasons include ignore provenance, disabled/unsupported extensions and symlinks.
 
-## Shared ignore and extension policy
-
-The compiled defaults come from the skill's root `checkignore.json`. A project may supply its own `checkignore.json`, or choose one with `--config`. The selector resolves each ignore source independently, then excludes paths rejected by any source.
-
-- `checkignore.json` adds positive forward-slash globs relative to the target root. Its extension mappings and explicit rule overrides govern applicable profiles.
-- Root and nested `.gitignore` files apply with their directory scopes, ordering, anchoring and negation. An excluded Git parent directory stays pruned. Patterns apply to candidate paths, including tracked files.
-- The target root's `.dockerignore` uses Docker's patternmatcher and ignorefile parser. Docker negations can reinclude descendants, so those excluded parents remain traversable when needed. Set `--root` to the intended context. Dockerfile-specific ignore files are outside this current scope.
-- JSON output records `ignore`, `gitignore`, `dockerignore`, disabled/unsupported extensions and symlink skips. Explicit path arguments use the same policies. Symlinks are skipped.
-
-Extension mappings support `javascript`, `typescript`, `json`, `go` and `gomod`. Set a suffix to `false` to skip it. The longest matching suffix wins case-insensitively. JavaScript/TypeScript `rules` and file-specific `overrides` apply through the supplied AST profile. Native optional limits live under `limits`.
+Extension types are `javascript`, `typescript`, `json`, `toml`, `go` and `gomod`. The longest matching suffix wins case-insensitively; `false` disables it. Unknown keys, rules, severities and unsupported options fail configuration validation.
 
 ```json
 {
   "ignore": ["archive/**", "tests/generated/**"],
-  "extensions": { ".jsx": false, ".source": "typescript", ".generated.ts": false },
-  "limits": { "directDependencies": 40, "importsPerFile": 15, "requireComments": false },
-  "overrides": [
-    { "files": ["fixtures/**"], "rules": { "func-style": "off" } }
-  ]
+  "extensions": {".source": "typescript", ".generated.ts": false},
+  "limits": {"directDependencies": 40, "importsPerFile": 15, "requireComments": false},
+  "overrides": [{"files": ["fixtures/**"], "rules": {"func-style": "off"}}]
 }
 ```
 
-The example limits are project choices. Dependency/import limits are inactive until configured. Comment presence is opt-in. Exclusion, rule and threshold changes are visible policy changes. Explain costly rules, false positives and custom-rule maintenance when they affect adoption.
+Dependency/import limits are inactive until configured. Select `comments` to apply `requireComments`. The supplied rule IDs are `prefer-const`, `no-var`, `func-style`, `no-restricted-syntax`, `maintainable/cross-directory-imports`, `@typescript-eslint/consistent-type-imports`, `max-depth`, `complexity` and `max-lines`. IDs with legacy prefixes identify native policy rules; they do not invoke ESLint.
 
-## Output and future model review
+Rules accept off/warn/error or numeric severities. Depth/complexity accept numeric thresholds; max-lines accepts a number or max/skipBlankLines/skipComments options. Func-style supports the supplied expression form. Use file-specific overrides for explicit exceptions. Inline ESLint comments do not disable native checks. Changes to exclusions, thresholds or severities are policy changes that need explanation.
 
-The JSON report has `schemaVersion: 1`. Findings carry file, line, column, severity, rule, message and `origin: "static"`. Native reports also carry typed metrics and per-check coverage. List/selection mode records zero checked files. Exit 0 means selected checks produced no errors, exit 1 means findings at error severity, and exit 2 means configuration or execution failure. Warnings remain visible and require a reasoned disposition in the handoff.
+## Reports and future review
 
-A future small-model review can consume the selected findings/metrics and bounded source ranges from the same selection. Keep that stage explicit, budgeted and separately attributable through finding origin, model/prompt version and usage. Deterministic checks and their findings retain their own provenance. Review comment usefulness or cohesive structure in that stage when requested. The current implementation supplies static analysis and the report boundary.
+JSON schema version 1 carries file/line/column, severity, rule, message and static provenance, plus metrics and check coverage. Exit codes are 0 without error findings, 1 with error findings, and 2 for configuration/operational failures. Warnings remain visible and require a disposition in the handoff.
 
-## Source, build and verification
+A future small-model stage can consume these reports and bounded source ranges. It needs explicit opt-in, a budget and separate model/prompt/usage provenance. The current binary makes no model calls. Comment usefulness, ownership and cohesion remain review tasks.
 
-Read [go.md](go.md) before changing Go code. Go 1.26 builds the current source. From the skill's source checkout, `sh build.sh` checks gofmt, runs Go tests/vet on the host, then builds with `CGO_ENABLED=0`, frozen modules and trimmed build paths. Set `GOOS` and `GOARCH` to cross-build. The resulting native executable carries its defaults. Rebuild after Go code or embedded defaults change.
+## Source verification
 
-The JS/TS profile uses Node 22.14+ and its own locked package dependencies. Install once in `scripts/` with `pnpm.cmd install --frozen-lockfile --ignore-scripts`, then verify with `pnpm.cmd test`. The tests exercise the actual CLI and shared selector against isolated projects.
-
-For future native JS/TS expansion, evaluate ast-grep for declarative AST rules and Oxlint for its existing lint catalog before implementing more custom analysis. The supplied JS/TS rules already exercise the user's keyword/style conventions. Both candidate tools have their own coverage and runtime packaging choices to review in a later working slice. [ast-grep](https://ast-grep.github.io/guide/introduction.html), [Oxlint](https://oxc.rs/docs/guide/usage/linter.html).
-
-Selection uses upstream libraries and their syntax. [Git ignore](https://git-scm.com/docs/gitignore), [Docker ignore](https://docs.docker.com/build/concepts/context/#dockerignore-files), [go-git matcher](https://pkg.go.dev/github.com/go-git/go-git/v5/plumbing/format/gitignore), [Docker matcher](https://pkg.go.dev/github.com/moby/patternmatcher). Native Go checks use the standard parser and AST. [Go parser](https://pkg.go.dev/go/parser).
+Read [rust.md](rust.md) before changing the checker. Run `sh scripts/build.sh` from SkillFoundry's root. It checks formatting, runs host tests and Clippy, then builds the requested release target. Package/install through the repository's shell entry points. The executable embeds ast-grep grammars/rules and Oxc syntax/binding analysis; it loads no Node profile. See [ast-grep library](https://ast-grep.github.io/guide/api-usage), [Oxc parser](https://oxc.rs/docs/guide/usage/parser.html) and [Git ignore library](https://docs.rs/ignore/latest/ignore/) for upstream behavior.

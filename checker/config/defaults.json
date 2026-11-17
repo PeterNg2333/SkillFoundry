@@ -1,0 +1,46 @@
+{
+  "ignore": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/target/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/.tmp/**",
+    "**/__pycache__/**"
+  ],
+  "extensions": {
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".json": "json",
+    ".go": "go",
+    ".mod": "gomod",
+    ".toml": "toml"
+  },
+  "rules": {
+    "max-depth": [
+      "warn",
+      2
+    ],
+    "complexity": [
+      "warn",
+      10
+    ],
+    "max-lines": [
+      "warn",
+      {
+        "max": 300,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ]
+  },
+  "overrides": []
+}

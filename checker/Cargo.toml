@@ -1,0 +1,31 @@
+[package]
+name = "maintainable-check"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+ast-grep-core = "=0.51.3"
+ast-grep-config = "=0.51.3"
+ast-grep-language = { version = "=0.51.3", default-features = false, features = ["tree-sitter-go", "tree-sitter-javascript", "tree-sitter-typescript"] }
+clap = { version = "4.6", features = ["derive"] }
+globset = "0.4"
+ignore = "0.4"
+dunce = "1.0"
+oxc_allocator = "=0.146.0"
+oxc_ast = "=0.146.0"
+oxc_parser = "=0.146.0"
+oxc_semantic = "=0.146.0"
+oxc_span = "=0.146.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
+toml = "1.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

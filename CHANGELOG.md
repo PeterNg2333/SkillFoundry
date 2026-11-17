@@ -1,0 +1,20 @@
+# Changelog
+
+## 0.2.0 - 2026-11-18
+
+### Changed
+
+- Use one Rust checker for JS/TS AST rules, native checks, selection and reports. Checks require no Node, Go compiler or package manager.
+- Separate checker source from skill instructions and build through `sh scripts/build.sh`.
+- Package the executable and Rust dependency notices without the former Go and ESLint runtimes.
+
+### Added
+
+- Scoped mutation analysis, explicit per-check coverage and TOML syntax/Cargo dependency inspection.
+- CLI fixtures for decorators, overloads, ignores, rule overrides, syntax failures and partial-check isolation.
+
+### Migration
+
+- Replace `node .../scripts/check.mjs` with `.../bin/maintainable-check check`. `--checks` selects a subset.
+- Go formatting is no longer implemented inside the checker. Reports mark `go-format` unsupported; retain the project's own `gofmt` check.
+- Supplied rule IDs and severity overrides retain their policy names. Arbitrary ESLint plugins and selector options are unsupported and fail configuration validation.

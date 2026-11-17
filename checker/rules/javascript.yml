@@ -1,0 +1,41 @@
+id: func-style
+language: TypeScript
+severity: error
+message: Use a const arrow for ordinary functions.
+rule:
+  any:
+    - kind: function_declaration
+    - kind: generator_function_declaration
+---
+id: no-var
+language: TypeScript
+severity: error
+message: Use let or const instead of var.
+rule:
+  kind: variable_declaration
+---
+id: no-restricted-syntax
+language: TypeScript
+severity: error
+message: Use a const arrow for ordinary functions.
+rule:
+  kind: variable_declarator
+  has:
+    any:
+      - kind: function_expression
+      - kind: generator_function
+    field: value
+---
+id: no-restricted-syntax
+language: TypeScript
+severity: error
+message: Bind ordinary arrows with const.
+rule:
+  kind: lexical_declaration
+  regex: '^let\b'
+  all:
+    - has:
+        kind: variable_declarator
+        has:
+          kind: arrow_function
+          field: value

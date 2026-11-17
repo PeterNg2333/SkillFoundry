@@ -1,84 +1,67 @@
 # SkillFoundry
 
-Reusable agent skills, native code checks and versioned ZIP distribution. Installed copies under `$CODEX_HOME/skills` (default `~/.codex/skills`) come from versioned release ZIPs. Edit this checkout, package a new version and reinstall it when changing a skill.
+Reusable agent skills with a standalone Rust code checker and versioned ZIP distribution. Code, comments, diagnostics and documentation are written in English.
 
-## Contents
+## Source and installed copies
 
 ```text
-skills/
-  maintainable-code/    # Instructions, Go CLI, JS/TS AST profile and locked dependencies
-scripts/
-  package.sh           # Build and package a skill
-  install.sh           # Install a local ZIP or download a GitHub release asset
-  package.py           # Archive, runtime and source metadata
-  install.py           # Validation, staged replacement and recovery
-  test_distribution.py # Distribution behavior and failure paths
-VERSION                # Shared release version
-dist/                  # Generated ZIPs and SHA256SUMS; ignored by Git
+checker/                 # One Cargo package: CLI, policy, selection, checks and reports
+  config/                # Embedded defaults
+  rules/                 # Embedded declarative AST rules
+  tests/                 # CLI regressions and fixtures
+skills/maintainable-code/ # Skill instructions and references
+scripts/                 # sh build/package/install entry points
+docs/                    # Architecture and current handoff
+dist/                    # Generated ZIPs and SHA256SUMS; ignored by Git
 ```
 
-Only the custom `maintainable-code` skill is included initially. Add other authored skills under `skills/<name>/SKILL.md` with their supporting files. Imported third-party skills remain owned by their upstream repositories.
+Edit this checkout. Installed copies under `$CODEX_HOME/skills` (default `~/.codex/skills`) are updated from versioned ZIPs. Only the authored `maintainable-code` skill is included initially; add other authored skills under `skills/<name>/SKILL.md`.
 
-## Build and package
+## Build and check
 
-Use a POSIX shell, including Git Bash on Windows. All build entry points are `.sh`. Packaging uses Python 3.10+ from the shell's PATH; it has no Python package dependencies.
-
-For `maintainable-code`, the build machine needs Go 1.26+, Node 22.14+ and pnpm 10.29.2. Dependencies are pinned in `go.sum` and `scripts/pnpm-lock.yaml`.
+Use a POSIX shell, including Git Bash on Windows, Rust 1.95+ with rustfmt/Clippy, and a C toolchain for the embedded grammars. Windows MSVC builds need Visual Studio C++ Build Tools. Cargo.lock pins dependencies. No Node or Go toolchain participates in the build.
 
 ```sh
-# Native CLI only: checks formatting, runs Go tests/vet, then builds.
-sh skills/maintainable-code/build.sh
+sh scripts/build.sh
+skills/maintainable-code/bin/maintainable-check.exe capabilities --json
+skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --json
+skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks dependencies,json --json
+skills/maintainable-code/bin/maintainable-check.exe select --root /path/to/project --json
+```
 
-# Distribution tests.
+The executable is named `maintainable-check` on Linux/macOS. All parsing runs in that executable. It applies extension routing, `checkignore.json`, scoped Git ignores and the root Docker ignore before checking. Use `--checks` to run only the needed subset.
+
+Coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Go formatting is explicitly unsupported; keep the project's own `gofmt` check. The checker does not replace project type checking. See [check commands and policy](skills/maintainable-code/references/checks.md), [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).
+
+For a cross-build, set `CHECKER_TARGET` to an installed Rust target triple and provide its linker/C toolchain. Tests and Clippy still run on the host:
+
+```sh
+CHECKER_TARGET=x86_64-unknown-linux-musl sh scripts/build.sh
+```
+
+## Package and install
+
+Packaging and the supplied installer need Python 3.10+ with its standard library. The installed checker itself needs only the operating system.
+
+```sh
 python -m unittest discover -s scripts -p 'test_*.py'
-
-# Build the native CLI and bundle the locked JS profile dependencies.
 sh scripts/package.sh maintainable-code
+sh scripts/install.sh dist/maintainable-code-0.2.0-windows-amd64.zip --replace
 ```
 
-The default Windows artifact is `dist/maintainable-code-0.1.1-windows-amd64.zip`. The package includes source, instructions, a native executable, embedded defaults, JS/TS runtime dependencies and dependency license notices. Consumers need no Go compiler or package manager. The native checks run standalone; the additional JS/TS profile requires Node 22.14+.
+The ZIP includes the executable, instructions, source metadata and resolved Rust dependency notices. It contains no Node packages or legacy checker source. `distribution.json` records version/platform/source revision; `.installation.json` records the archive hash, source and time. `dist/SHA256SUMS` contains archive hashes. Package from a clean commit to identify exact source.
 
-`distribution.json` records the version, target platform and source revision. `dist/SHA256SUMS` lists ZIP hashes. Set `VERSION` for the next release or pass `--version 0.2.0` to `package.sh`. Package from a clean commit to identify the exact source.
+Instruction-only skills produce `<name>-<version>-any.zip`. The native build integration belongs to `maintainable-code`; another runtime needs an explicit build adapter.
+
+Get the installer scripts by cloning this repository or downloading its source ZIP. Once published, download a release asset with:
 
 ```sh
-# Cross-build the native executable while running Go checks on the host.
-GOOS=linux GOARCH=amd64 sh scripts/package.sh maintainable-code
+sh scripts/install.sh --github OWNER/SkillFoundry --version 0.2.0 --replace
+sh scripts/install.sh --url https://example.com/maintainable-code-0.2.0-windows-amd64.zip --replace
 ```
 
-Instruction-only skills produce `<name>-<version>-any.zip`. The Go build integration currently belongs to `maintainable-code`; add an explicit build adapter when another skill needs a different runtime.
+Replace `OWNER` after publication. `--github` chooses the host platform and release `v0.2.0`. For an instruction-only skill, also pass `--skill <name> --platform any`. `--dest <directory>` chooses a separate installation root. Replacement is staged and restores the previous copy on failure; if restoration fails, its backup path is retained and reported.
 
-## Install from ZIP or GitHub
+## Publish
 
-Get these installer scripts by cloning this repository or downloading its source ZIP. Then install a release artifact:
-
-```sh
-sh scripts/install.sh dist/maintainable-code-0.1.1-windows-amd64.zip --replace
-
-sh scripts/install.sh --github OWNER/SkillFoundry --version 0.1.1 --replace
-
-sh scripts/install.sh --url https://example.com/maintainable-code-0.1.1-windows-amd64.zip --replace
-```
-
-Replace `OWNER` with the GitHub repository owner after publishing. `--github` downloads the asset for the current OS and architecture from release `v0.1.1`. For instruction-only skills, also pass `--skill <name> --platform any`. A GitHub source ZIP alone does not include compiled checker artifacts.
-
-Installation validates the archive and its platform, stages the new copy, then replaces only that skill directory. `--replace` is required for an existing installation. Failed replacement restores the prior copy; if restoration itself fails, the backup is retained and its path is reported. Concurrent installs of the same skill are blocked. `.installation.json` records the downloaded source, ZIP hash and installation time. Use `--dest <directory>` for a separate skills directory.
-
-Run installed checks by resolving the skill directory:
-
-```sh
-skill_root="${CODEX_HOME:-$HOME/.codex}/skills/maintainable-code"
-"$skill_root/bin/maintainable-check.exe" capabilities --json
-"$skill_root/bin/maintainable-check.exe" check --root /path/to/project --checks json,dependencies --json
-node "$skill_root/scripts/check.mjs" --root /path/to/project
-```
-
-On Linux/macOS the executable is named `maintainable-check`. The native catalog covers JSON syntax, dependency counts, Go AST/formatting and optional Go comment checks. The JS/TS profile supplies the additional AST style rules. Both apply extension selection, `checkignore.json`, Git ignores and Docker ignores. See the skill's [check reference](skills/maintainable-code/references/checks.md) for coverage and configuration.
-
-## Publish a release
-
-1. Commit the source and set the release version.
-2. Push this repository to GitHub.
-3. Run `sh scripts/package.sh maintainable-code` for each supported platform.
-4. Create release `v<version>` and attach the generated ZIPs and `SHA256SUMS`.
-
-Local installed copies continue to update from those release ZIPs. The repository does not automatically publish or update installations.
+Set `VERSION` and the checker package version, update the changelog, commit, build/package, then push to GitHub. Create release `v<version>` and attach platform ZIPs and `SHA256SUMS`. A source ZIP contains buildable source; release ZIPs contain ready executables. See [current handoff](docs/handoff.md) for verification and remaining work.

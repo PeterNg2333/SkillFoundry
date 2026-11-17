@@ -32,11 +32,11 @@ Const bindings must be initialized before invocation. A function body can refer 
 
 ## Executable checks
 
-Use the supplied JS/TS AST profile described in [checks.md](checks.md). Its implementation and parser dependencies live inside this skill. The shared Go selector applies `checkignore.json`, scoped Git ignores, root Docker ignore rules and extension mappings before parsing. Run the installed profile on affected files or the project root. Use the native CLI's dependency checks for declared package counts.
+Use the native Rust CLI described in [checks.md](checks.md). The SkillFoundry checkout owns implementation and dependencies under `checker/`; the installed skill includes the executable. It applies `checkignore.json`, scoped Git ignores, root Docker ignore and extension mappings before parsing. Run selected checks on affected files or the project root. Dependency checks measure declared package counts.
 
 | Intent | Owner |
 |---|---|
-| Const arrow bindings and bottom export lists | Bundled ESLint rules and AST selectors in `scripts/rules.mjs`. |
+| Const arrow bindings and bottom export lists | Embedded ast-grep YAML patterns and native export-order inspection. |
 | Type-only imports and separate type export lists | Bundled TypeScript syntax checks, with decorator metadata handling. |
 | Cross-directory aliases | Bundled rule covers static/dynamic imports and re-exports, including child-directory paths. Compiler and runtime resolution use the project configuration. |
 | Depth, complexity and file length | Bundled review warnings with thresholds in the skill's default configuration. |
@@ -45,7 +45,7 @@ Use the supplied JS/TS AST profile described in [checks.md](checks.md). Its impl
 | Unsafe values, Promise outcomes and exhaustive switches | Project type-aware linting against its actual compiler projects. |
 | Process boundaries and feature-private imports | Project architecture-specific rules and boundary tests. |
 
-Maintain shared syntax/style checks and regression fixtures here when preferences evolve. Use the project's `checkignore.json` for scope and explicit exceptions. Keep project-specific compiler, formatter, ownership and behavior checks in their existing commands. Scope AST selectors to ordinary syntax and verify class methods, overloads and framework entries when extending coverage.
+Maintain shared syntax/style checks and regression fixtures in SkillFoundry's `checker/` when preferences evolve. Use the project's `checkignore.json` for scope and explicit exceptions. Keep compiler, formatter, ownership and behavior checks in their existing commands. Scope AST rules to ordinary syntax and verify class methods, overloads and framework entries when extending coverage.
 
 Report every remaining bundled warning with its file/line, metric and disposition. Explain expensive rules, false positives and custom-rule maintenance when they affect adoption. Review exclusion, threshold and suppression changes as policy changes. Evaluate cohesion and ownership against the actual code when a metric raises attention.
 

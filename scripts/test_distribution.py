@@ -102,15 +102,15 @@ class DistributionTests(unittest.TestCase):
         (payload / "bin/checker").write_bytes(b"binary")
         (payload / "build.sh").write_text("#!/bin/sh\n")
         (payload / "SKILL.md").write_text("Instructions")
-        runtime = payload / "scripts/node_modules/example"
+        runtime = payload / "assets/rules"
         runtime.mkdir(parents=True)
-        (runtime / "index.js").write_text("export default 1")
+        (runtime / "policy.json").write_text(json.dumps({"enabled": True}))
         archive = self.root / "portable.zip"
         package.archive_payload(payload, archive)
         with zipfile.ZipFile(archive) as result:
             for name in ("sample-skill/build.sh", "sample-skill/bin/checker"):
                 self.assertEqual(stat.S_IMODE(result.getinfo(name).external_attr >> 16), 0o755)
-            self.assertIn("sample-skill/scripts/node_modules/example/index.js", result.namelist())
+            self.assertIn("sample-skill/assets/rules/policy.json", result.namelist())
 
     def test_instruction_only_skill_packages_and_installs(self):
         repository = self.root / "repository"

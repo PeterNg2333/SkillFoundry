@@ -1,4 +1,4 @@
-"""Build a versioned skill ZIP from repository source and locked runtimes."""
+"""Build a versioned skill ZIP with its native checker and dependency notices."""
 
 import argparse
 import hashlib
@@ -36,45 +36,49 @@ def source_revision():
     return revision.stdout.strip() if revision.returncode == 0 else None, dirty
 
 
-def add_go_licenses(skill, binary, payload):
-    notices = payload / "THIRD_PARTY" / "go"
-    notices.mkdir(parents=True)
-    goroot = Path(run(["go", "env", "GOROOT"], skill).strip())
-    shutil.copy2(goroot / "LICENSE", notices / "Go-LICENSE")
-    modules = []
-    for line in run(["go", "version", "-m", str(binary)], skill).splitlines():
-        fields = line.split()
-        if len(fields) >= 3 and fields[0] == "dep":
-            modules.append((fields[1], fields[2]))
-    for module, version in modules:
-        metadata = json.loads(run(["go", "list", "-m", "-json", module], skill))
-        directory = Path(metadata["Dir"])
-        destination = notices / f"{module.replace('/', '_')}@{version}"
-        licenses = [file for file in directory.iterdir()
-                    if file.is_file() and file.name.upper().startswith(("LICENSE", "COPYING", "NOTICE"))]
-        if not licenses:
-            raise RuntimeError(f"No bundled license notice found for {module}")
-        destination.mkdir()
-        for file in licenses:
-            shutil.copy2(file, destination / file.name)
+def add_rust_notices(checker, target, payload):
+    metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1",
+                               "--filter-platform", target], checker))
+    notices = payload / "THIRD_PARTY" / "rust"
+    inventory = []
+    for package in metadata["packages"]:
+        if package["source"] is None:
+            continue
+        directory = Path(package["manifest_path"]).parent
+        destination = notices / f"{package['name']}-{package['version']}"
+        destination.mkdir(parents=True)
+        for file in directory.iterdir():
+            if file.is_file() and file.name.upper().startswith(("LICENSE", "COPYING", "NOTICE", "UNLICENSE")):
+                shutil.copy2(file, destination / file.name)
+        inventory.append({key: package.get(key) for key in ("name", "version", "license", "repository")})
+    (notices / "dependencies.json").write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
+
+
+def rust_target(checker):
+    target = os.environ.get("CHECKER_TARGET")
+    if not target:
+        target = next(line.removeprefix("host: ") for line in run(["rustc", "-vV"], checker).splitlines()
+                      if line.startswith("host: "))
+    architecture = {"x86_64": "amd64", "aarch64": "arm64"}.get(target.split("-")[0])
+    operating_system = next((name for token, name in (("windows", "windows"), ("linux", "linux"), ("darwin", "darwin"))
+                             if token in target.split("-")), None)
+    if not architecture or not operating_system:
+        raise ValueError(f"Unsupported release target {target}")
+    return target, f"{operating_system}-{architecture}"
 
 
 def prepare_payload(skill, payload, shell):
     copy_source(skill, payload)
     platform = "any"
-    if (skill / "build.sh").is_file():
-        subprocess.run([shell, str(skill / "build.sh")], cwd=skill, check=True)
-        target_os, target_arch = run(["go", "env", "GOOS", "GOARCH"], skill).splitlines()
-        platform = f"{target_os}-{target_arch}"
-        binary_name = "maintainable-check.exe" if target_os == "windows" else "maintainable-check"
+    checker = REPOSITORY / "checker"
+    if skill.name == "maintainable-code" and (checker / "Cargo.toml").is_file():
+        target, platform = rust_target(checker)
+        subprocess.run([shell, str(REPOSITORY / "scripts" / "build.sh")], cwd=REPOSITORY, check=True)
+        binary_name = "maintainable-check.exe" if platform.startswith("windows-") else "maintainable-check"
         binary = skill / "bin" / binary_name
         (payload / "bin").mkdir()
         shutil.copy2(binary, payload / "bin" / binary_name)
-        add_go_licenses(skill, binary, payload)
-    profile = payload / "scripts"
-    if (profile / "pnpm-lock.yaml").is_file():
-        subprocess.run([shell, "-c", "pnpm install --frozen-lockfile --ignore-scripts --prod --node-linker=hoisted"],
-                       cwd=profile, check=True)
+        add_rust_notices(checker, target, payload)
     return platform
 
 
@@ -82,11 +86,9 @@ def archive_payload(payload, archive):
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED,
                          compresslevel=6) as output:
         for directory, names, files in os.walk(payload, followlinks=False):
-            names[:] = sorted(name for name in names if name not in {".bin", ".pnpm", "__pycache__"})
+            names[:] = sorted(name for name in names if name not in {"__pycache__"})
             for name in sorted(files):
                 file = Path(directory) / name
-                if name in {".modules.yaml", ".pnpm-workspace-state-v1.json"}:
-                    continue
                 if file.is_symlink():
                     raise RuntimeError(f"Runtime contains an unresolved link {file.relative_to(payload)}")
                 relative = file.relative_to(payload.parent).as_posix()
