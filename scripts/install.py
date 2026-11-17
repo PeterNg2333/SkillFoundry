@@ -173,7 +173,7 @@ def fetch(url, destination):
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise ValueError("Download URLs must use HTTPS")
-    request = urllib.request.Request(url, headers={"User-Agent": "codex-skills-installer"})
+    request = urllib.request.Request(url, headers={"User-Agent": "SkillFoundry-installer"})
     with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as output:
         shutil.copyfileobj(response, output)
 

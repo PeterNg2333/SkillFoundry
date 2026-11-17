@@ -9,7 +9,7 @@ Make each agreed phase easy to understand, verify and continue. Apply the user's
 
 ## Maintain this skill
 
-The source of truth is `skills/maintainable-code/` in the `codex-skills` repository. The installed skill directory is a versioned runtime copy. Make reusable changes in the source checkout, run `sh build.sh`, package the skill with the repository's `scripts/package.sh`, then update the installed copy from that ZIP using `scripts/install.sh --replace`. The repository README owns distribution commands. Check `distribution.json` and `.installation.json` in an installed copy for its version, source revision and installation receipt.
+The source of truth is `skills/maintainable-code/` in the `SkillFoundry` repository. The installed skill directory is a versioned runtime copy. Make reusable changes in the source checkout, run `sh build.sh`, package the skill with the repository's `scripts/package.sh`, then update the installed copy from that ZIP using `scripts/install.sh --replace`. The repository README owns distribution commands. Check `distribution.json` and `.installation.json` in an installed copy for its version, source revision and installation receipt.
 
 ## Establish the current task
 
