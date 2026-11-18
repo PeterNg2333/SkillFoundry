@@ -90,6 +90,37 @@ fn filters_rules_and_counts_direct_calls_by_binding() {
 }
 
 #[test]
+fn single_use_helpers_preserve_inline_exports_and_check_nested_private_bindings() {
+    let project = Project::new(&[
+        (
+            "api.ts",
+            r#"export function shared() { return 1; }
+export const arrow = () => 2;
+export default function run() {
+    const nested = () => 3;
+    return shared() + arrow() + nested();
+}
+run();"#,
+        ),
+        (
+            "consumer.ts",
+            "import run, { shared, arrow } from './api'; console.log(run(), shared(), arrow());",
+        ),
+    ]);
+    let (status, report, stderr) = project.run(&["check", "--json", "--rules", SINGLE_USE], true);
+    assert_eq!(status, 1, "{stderr}\n{report}");
+    let findings = report["diagnostics"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{report}");
+    assert_eq!(findings[0]["rule"], SINGLE_USE);
+    assert!(
+        findings[0]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("nested ")
+    );
+}
+
+#[test]
 fn bypasses_only_the_attached_rule_and_checks_for_unused_bypasses() {
     let project = Project::new(&[
         (

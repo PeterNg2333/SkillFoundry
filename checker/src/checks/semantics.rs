@@ -45,7 +45,7 @@ fn check_single_use_helper(
     };
     if matches!(
         nodes.parent_kind(declaration_id),
-        AstKind::ExportNamedDeclaration(_) | AstKind::ExportDefaultDeclaration(_)
+        AstKind::ExportDeclaration(_) | AstKind::ExportDefaultDeclaration(_)
     ) {
         return;
     }
