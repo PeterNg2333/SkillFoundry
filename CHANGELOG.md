@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - Unreleased
+
+- Add skill shortcuts `/check [description]` and `/help`. Scope checks to resolved paths and exact native JS/TS rules with `--rules`.
+- Report private JS/TS helpers with one direct call site as errors. Inline them or document a statement-scoped `@bypass` when a separate function owns a meaningful responsibility.
+- Add optional `directives` analysis for `@impl`, `@refactor`, and `@check` comments, and audit skipped findings in the bypass report.
+
 ## 0.2.0 - 2026-11-18
 
 ### Changed

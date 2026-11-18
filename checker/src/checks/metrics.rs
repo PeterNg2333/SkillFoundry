@@ -65,7 +65,7 @@ fn branches(node: &SyntaxNode<'_>) -> usize {
 }
 
 fn warn(
-    policy: &Policy,
+    policy: &Policy<'_>,
     input: &SourceFile<'_>,
     offset: usize,
     rule: &str,
@@ -87,7 +87,12 @@ fn warn(
     }
 }
 
-pub fn check(root: &SyntaxNode<'_>, input: &SourceFile<'_>, policy: &Policy, report: &mut Report) {
+pub fn check(
+    root: &SyntaxNode<'_>,
+    input: &SourceFile<'_>,
+    policy: &Policy<'_>,
+    report: &mut Report,
+) {
     let file = input.path;
     let source = input.text;
     let mut max_depth = 0;

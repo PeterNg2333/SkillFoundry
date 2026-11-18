@@ -1,0 +1,148 @@
+use std::ops::Range;
+
+use super::{SourceFile, ast::SyntaxNode};
+use crate::{
+    config::{Policy, RULES},
+    report::{Bypass, Directive, Report, source_location},
+};
+
+struct LocalBypass<'a> {
+    offset: usize,
+    target: Range<usize>,
+    rule: &'a str,
+    reason: &'a str,
+    used: bool,
+}
+
+fn bypass_target(node: &SyntaxNode<'_>, source: &str) -> Option<Range<usize>> {
+    let line_start = source[..node.range().start]
+        .rfind('\n')
+        .map_or(0, |end| end + 1);
+    if !source[line_start..node.range().start].trim().is_empty()
+        || !node.parent().is_some_and(|parent| {
+            matches!(
+                parent.kind().as_ref(),
+                "program" | "statement_block" | "switch_case" | "switch_default"
+            )
+        })
+    {
+        return None;
+    }
+    node.next_all()
+        .find(|next| next.is_named() && next.kind() != "comment")
+        .filter(|next| {
+            let kind = next.kind();
+            kind.ends_with("_statement") || kind.ends_with("_declaration")
+        })
+        .map(|next| next.range())
+}
+
+pub fn check(
+    root: &SyntaxNode<'_>,
+    input: &SourceFile<'_>,
+    style_policy: Option<&Policy<'_>>,
+    inspect_directives: bool,
+    first_finding: usize,
+    report: &mut Report,
+) {
+    let mut bypasses = Vec::new();
+    for node in root.dfs().filter(|node| node.kind() == "comment") {
+        let range = node.range();
+        let comment = &input.text[range.clone()];
+        let Some(body) = comment
+            .strip_prefix("//")
+            .or_else(|| comment.strip_prefix("/*")?.strip_suffix("*/"))
+        else {
+            continue;
+        };
+        let mut line_offset = range.start + 2;
+        for line in body.split_inclusive('\n') {
+            let trimmed = line.trim_start();
+            let tag = trimmed.strip_prefix('*').unwrap_or(trimmed).trim_start();
+            let offset = line_offset + line.len() - tag.len();
+            line_offset += line.len();
+            let (kind, text) = tag.split_once(char::is_whitespace).unwrap_or((tag, ""));
+            let text = text.trim();
+            match kind {
+                "@bypass" if style_policy.is_some() => {
+                    let details = text
+                        .split_once("--")
+                        .map(|(rule, reason)| (rule.trim(), reason.trim()));
+                    if let Some((rule, reason)) = details
+                        && RULES.contains(&rule)
+                        && !reason.is_empty()
+                        && let Some(target) = bypass_target(&node, input.text)
+                    {
+                        bypasses.push(LocalBypass {
+                            offset,
+                            target,
+                            rule,
+                            reason,
+                            used: false,
+                        });
+                    } else {
+                        report.finding(input.path, input.text, offset, "error", "maintainable/invalid-bypass",
+                            "Place @bypass <rule-id> -- <reason> on its own comment before a statement or declaration.");
+                    }
+                }
+                "@impl" | "@refactor" | "@check" if inspect_directives => {
+                    if text.is_empty() {
+                        report.finding(
+                            input.path,
+                            input.text,
+                            offset,
+                            "error",
+                            "maintainable/invalid-directive",
+                            format!("Provide a description after {kind}."),
+                        );
+                        continue;
+                    }
+                    let kind = match kind {
+                        "@impl" => "impl",
+                        "@refactor" => "refactor",
+                        _ => "check",
+                    };
+                    let (line, column) = source_location(input.text, offset);
+                    report.directives.push(Directive {
+                        file: input.path.to_owned(),
+                        line,
+                        column,
+                        kind,
+                        text: text.to_owned(),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(policy) = style_policy.filter(|_| !bypasses.is_empty()) {
+        let findings = report.diagnostics.split_off(first_finding);
+        for finding in findings {
+            if let Some(bypass) = bypasses.iter_mut().find(|bypass| {
+                bypass.rule == finding.rule && bypass.target.contains(&finding.offset)
+            }) {
+                bypass.used = true;
+                report.bypasses.push(Bypass {
+                    finding,
+                    directive_line: source_location(input.text, bypass.offset).0,
+                    reason: bypass.reason.to_owned(),
+                });
+            } else {
+                report.diagnostics.push(finding);
+            }
+        }
+        for bypass in bypasses {
+            if !bypass.used && policy.severity(bypass.rule).is_some() {
+                report.finding(
+                    input.path,
+                    input.text,
+                    bypass.offset,
+                    "error",
+                    "maintainable/unused-bypass",
+                    format!("Remove the unused @bypass for {}.", bypass.rule),
+                );
+            }
+        }
+    }
+}

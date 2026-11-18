@@ -39,6 +39,7 @@ Use the native Rust CLI described in [checks.md](checks.md). The SkillFoundry ch
 | Const arrow bindings and bottom export lists | Embedded ast-grep YAML patterns and native export-order inspection. |
 | Type-only imports and separate type export lists | Bundled TypeScript syntax checks, with decorator metadata handling. |
 | Cross-directory aliases | Bundled rule covers static/dynamic imports and re-exports, including child-directory paths. Compiler and runtime resolution use the project configuration. |
+| One-use private helpers | Native scoped binding analysis reports a helper with one direct call site. Inline the implementation while preserving argument evaluation, side effects, and return behavior. Use a scoped `@bypass` to document a responsibility that needs its own function. |
 | Depth, complexity and file length | Bundled review warnings with thresholds in the skill's default configuration. |
 | Whitespace, wrapping and punctuation | Project formatter and its existing configuration. |
 | Strict types, indexed values and optional-property semantics | Project TypeScript compiler. |

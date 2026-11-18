@@ -25,6 +25,7 @@
     ".toml": "toml"
   },
   "rules": {
+    "maintainable/single-use-helper": "error",
     "max-depth": [
       "warn",
       2

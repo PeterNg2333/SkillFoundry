@@ -1,11 +1,18 @@
 ---
 name: maintainable-code
-description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, or native Rust CLI and AST/style/dependency checks selected by checkignore.json, Git/Docker ignores and file extensions."
+description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, or native source checks. Supports /check with a natural-language file and rule scope and /help with usage examples."
 ---
 
 # Maintainable Code
 
 Make each agreed phase easy to understand, verify and continue. Apply the user's code organization preferences while respecting repository and framework requirements.
+
+## Shortcuts
+
+- `/help` shows the shortcut syntax, scope examples, and supported checks. Read [checks.md](references/checks.md) and answer without scanning the project.
+- `/check [description]` runs static checks. Read [checks.md](references/checks.md) to translate the description into project-relative paths, check IDs and rule IDs. With no description, run the project's default native check scope.
+
+Use `$maintainable-code /check …` or `$maintainable-code /help` to select this skill explicitly. Treat `/check` as a read-only request. Carry out source work directives when the user asks to implement or refactor them.
 
 ## Maintain this skill
 

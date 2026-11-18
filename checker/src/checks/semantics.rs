@@ -1,20 +1,97 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
-    ast::{ImportDeclarationSpecifier, VariableDeclarationKind},
+    ast::{Expression, ImportDeclarationSpecifier, VariableDeclarationKind},
 };
 use oxc_parser::Parser;
-use oxc_semantic::SemanticBuilder;
-use oxc_span::SourceType;
+use oxc_semantic::{AstNode, Semantic, SemanticBuilder};
+use oxc_span::{GetSpan, SourceType};
 
-use crate::{config::Policy, report::Report};
+use crate::{
+    config::{Policy, SINGLE_USE_HELPER},
+    report::Report,
+};
+
+fn check_single_use_helper(
+    node: &AstNode<'_>,
+    semantic: &Semantic<'_>,
+    file: &str,
+    source: &str,
+    severity: &str,
+    report: &mut Report,
+) {
+    let nodes = semantic.nodes();
+    let (binding, declaration_id) = match node.kind() {
+        AstKind::VariableDeclarator(declaration) => {
+            let parent_id = nodes.parent_id(node.id());
+            let is_const = matches!(nodes.kind(parent_id), AstKind::VariableDeclaration(parent)
+                if parent.kind == VariableDeclarationKind::Const);
+            let is_function = match declaration.init.as_ref() {
+                Some(Expression::ArrowFunctionExpression(_)) => true,
+                Some(Expression::FunctionExpression(function)) => !function.generator,
+                _ => false,
+            };
+            if !is_const || !is_function {
+                return;
+            }
+            (declaration.id.get_binding_identifier(), parent_id)
+        }
+        AstKind::Function(function)
+            if function.is_declaration() && function.body.is_some() && !function.generator =>
+        {
+            (function.id.as_ref(), node.id())
+        }
+        _ => return,
+    };
+    if matches!(
+        nodes.parent_kind(declaration_id),
+        AstKind::ExportNamedDeclaration(_) | AstKind::ExportDefaultDeclaration(_)
+    ) {
+        return;
+    }
+    let Some(binding) = binding else { return };
+    let Some(symbol) = binding.symbol_id.get() else {
+        return;
+    };
+    let scope = semantic.scoping();
+    if !scope.symbol_redeclarations(symbol).is_empty() {
+        return;
+    }
+    let mut references = scope.get_resolved_references(symbol);
+    let Some(reference) = references.next() else {
+        return;
+    };
+    if references.next().is_some() {
+        return;
+    }
+    let reference_id = reference.node_id();
+    let reference_span = nodes.kind(reference_id).span();
+    let span = node.span();
+    if !matches!(nodes.parent_kind(reference_id), AstKind::CallExpression(call)
+        if !call.optional && call.callee.span() == reference_span)
+        || (span.start <= reference_span.start && reference_span.end <= span.end)
+    {
+        return;
+    }
+    report.finding(
+        file,
+        source,
+        binding.span.start as usize,
+        severity,
+        SINGLE_USE_HELPER,
+        format!(
+            "{} has one direct call site. Inline it into the caller or document a local exception.",
+            binding.name
+        ),
+    );
+}
 
 pub fn check(
     file: &str,
     source: &str,
     typescript: bool,
     inspect: bool,
-    policy: &Policy,
+    policy: &Policy<'_>,
     report: &mut Report,
 ) -> bool {
     let allocator = Allocator::default();
@@ -63,7 +140,11 @@ pub fn check(
         .nodes()
         .iter()
         .any(|node| matches!(node.kind(), AstKind::Decorator(_)));
+    let single_use_severity = policy.severity(SINGLE_USE_HELPER);
     for node in semantic.nodes().iter() {
+        if let Some(severity) = single_use_severity {
+            check_single_use_helper(node, &semantic, file, source, severity, report);
+        }
         match node.kind() {
             AstKind::VariableDeclaration(declaration)
                 if declaration.kind == VariableDeclarationKind::Let =>

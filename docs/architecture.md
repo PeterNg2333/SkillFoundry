@@ -11,7 +11,8 @@ The runtime is one Rust executable. It reads source and reports findings; it doe
 | `checker/src/selection/` | Explicit scope, extension routing, Git/Docker exclusions and skip reasons |
 | `checker/src/checks/mod.rs` | Available checks, dispatch and actual per-check coverage |
 | `checker/src/checks/javascript.rs` | Structural rules, exports and import organization |
-| `checker/src/checks/semantics.rs` | Oxc syntax, binding mutation and type-only imports |
+| `checker/src/checks/semantics.rs` | Oxc syntax, binding mutation, single-use helpers and type-only imports |
+| `checker/src/checks/directives.rs` | JS/TS comment directives, statement-scoped bypasses and their audit entries |
 | `checker/src/checks/ast.rs` | Native grammar parsing, Go inspection and comment groups |
 | `checker/src/checks/metrics.rs` | Nesting, branch complexity and source-line measurements |
 | `checker/src/checks/manifests.rs` | JSON/TOML syntax and declared dependency counts |
@@ -25,7 +26,7 @@ Use one Cargo package. Add a crate or trait when an actual second consumer or im
 
 ## Analysis libraries
 
-ast-grep embeds only the Go, JavaScript and TypeScript grammars used by current checks. Declarative patterns use ast-grep configuration, with explicit checks for export ordering and path-dependent import policy. Oxc supplies syntax validation and scoped reference analysis for `prefer-const` and type-only imports. Files with decorators preserve value imports because decorator metadata may require them at runtime.
+ast-grep embeds only the Go, JavaScript and TypeScript grammars used by current checks. Declarative patterns use ast-grep configuration, with explicit checks for export ordering and path-dependent import policy. Oxc supplies syntax validation and scoped reference analysis for `prefer-const`, single-use helpers and type-only imports. Files with decorators preserve value imports because decorator metadata may require them at runtime.
 
 These responsibilities require two JS/TS parse representations. This adds build dependencies and parse work, but avoids maintaining a parser or name resolver. The implementation does not embed Oxlint's unpublished linter crate or execute Node plugins. Cargo.lock pins the graph; upgrades require the fixtures and shell build to pass.
 
@@ -38,6 +39,8 @@ Apply embedded and project `checkignore.json`, scoped root/nested `.gitignore`, 
 ## Reports and limitations
 
 Exit codes are 0 for completed checks without errors, 1 for error findings, and 2 for invalid configuration or operational failures. Warnings remain visible without failing the command. A list operation reports selection without claiming analysis. `--checks` runs only selected checks; per-check status and checked/unchecked counts describe coverage.
+
+`--rules` narrows configurable JS/TS rule IDs while preserving project overrides and syntax validation. Bypasses are part of JS/TS policy analysis. The report preserves suppressed findings with their reasons. The optional `directives` check reports work comments as data for the skill to use when the user requests edits.
 
 - Syntax and local binding analysis do not replace project type checking.
 - Go parsing, imports, functions and comment groups use the embedded grammar. `go-format` is explicitly unsupported; projects retain their own `gofmt` check.

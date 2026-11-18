@@ -7,7 +7,7 @@ use ast_grep_language::SupportLang;
 use super::{
     SourceFile,
     ast::{self, SyntaxNode},
-    metrics, semantics,
+    directives, metrics, semantics,
 };
 use crate::{
     config::{Policy, Settings},
@@ -18,7 +18,7 @@ fn emit(
     node: &SyntaxNode<'_>,
     file: &str,
     source: &str,
-    policy: &Policy,
+    policy: &Policy<'_>,
     rule: &str,
     message: &str,
     report: &mut Report,
@@ -32,7 +32,7 @@ fn check_exports(
     root: &SyntaxNode<'_>,
     file: &str,
     source: &str,
-    policy: &Policy,
+    policy: &Policy<'_>,
     report: &mut Report,
 ) {
     let mut seen_export = false;
@@ -98,7 +98,7 @@ fn check_imports(
     project: &Path,
     file: &str,
     source: &str,
-    policy: &Policy,
+    policy: &Policy<'_>,
     report: &mut Report,
 ) -> usize {
     let mut imports = 0;
@@ -149,6 +149,8 @@ pub fn check(
     settings: &Settings,
     inspect: bool,
     inspect_comments: bool,
+    inspect_directives: bool,
+    rules: &[String],
     report: &mut Report,
 ) -> Result<()> {
     let SourceFile {
@@ -157,7 +159,8 @@ pub fn check(
         text: source,
         kind,
     } = *input;
-    let policy = Policy::for_file(settings, file)?;
+    let policy = Policy::for_file(settings, file, rules)?;
+    let first_finding = report.diagnostics.len();
     if !semantics::check(file, source, kind == "typescript", inspect, &policy, report) {
         return Ok(());
     }
@@ -169,7 +172,7 @@ pub fn check(
     let tree = ast::parse(source, language)?;
     let root = tree.root();
     if inspect {
-        let rules = from_yaml_string::<SupportLang>(
+        let ast_rules = from_yaml_string::<SupportLang>(
             &include_str!("../../rules/javascript.yml")
                 .replace("language: TypeScript", &format!("language: {label}")),
             &GlobalRules::default(),
@@ -184,7 +187,7 @@ pub fn check(
                     .map(|(parent, name)| (parent.node_id(), name.text().into_owned()))
             })
             .collect();
-        for rule in rules {
+        for rule in ast_rules {
             if policy.severity(&rule.id).is_none() {
                 continue;
             }
@@ -210,28 +213,53 @@ pub fn check(
                 );
             }
         }
-        check_exports(&root, file, source, &policy, report);
-        let imports = check_imports(&root, project, file, source, &policy, report);
-        report.metric(file, kind, "imports", imports);
-        if settings
-            .limits
-            .imports_per_file
-            .is_some_and(|limit| imports > limit)
-        {
-            report.finding(
-                file,
-                source,
-                0,
-                "warning",
-                "imports/count",
-                format!("{imports} imports exceed the configured limit."),
-            );
+        if policy.severity("no-restricted-syntax").is_some() {
+            check_exports(&root, file, source, &policy, report);
         }
-        metrics::check(&root, input, &policy, report);
+        if rules.is_empty()
+            || rules
+                .iter()
+                .any(|rule| rule == "maintainable/cross-directory-imports")
+        {
+            let imports = check_imports(&root, project, file, source, &policy, report);
+            report.metric(file, kind, "imports", imports);
+            if rules.is_empty()
+                && settings
+                    .limits
+                    .imports_per_file
+                    .is_some_and(|limit| imports > limit)
+            {
+                report.finding(
+                    file,
+                    source,
+                    0,
+                    "warning",
+                    "imports/count",
+                    format!("{imports} imports exceed the configured limit."),
+                );
+            }
+        }
+        if rules.is_empty()
+            || rules
+                .iter()
+                .any(|rule| matches!(rule.as_str(), "max-depth" | "complexity" | "max-lines"))
+        {
+            metrics::check(&root, input, &policy, report);
+        }
     }
     if inspect_comments {
         let (groups, _) = ast::comments(&root, source);
         ast::check_comments(file, source, groups, &settings.limits, report);
+    }
+    if inspect || inspect_directives {
+        directives::check(
+            &root,
+            input,
+            inspect.then_some(&policy),
+            inspect_directives,
+            first_finding,
+            report,
+        );
     }
     Ok(())
 }

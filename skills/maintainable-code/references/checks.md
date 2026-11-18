@@ -2,6 +2,24 @@
 
 The installed skill supplies one Rust executable at `bin/maintainable-check.exe` on Windows or `bin/maintainable-check` on Linux/macOS. Defaults and AST rules are embedded. Running checks requires no Node, Go toolchain or package manager. Source lives in SkillFoundry's `checker/`.
 
+## Skill shortcuts
+
+Use `/help` to see the syntax and supported scope. These are skill prompt shortcuts. In a client with its own slash commands, invoke the skill explicitly, for example `$maintainable-code /check single-use helpers in src/routes`.
+
+| Prompt | Checker arguments after `check --root <project> --json` |
+|---|---|
+| `/check` | Use default checks and project file selection. |
+| `/check single-use helpers in src/routes` | `--rules maintainable/single-use-helper -- src/routes` |
+| `/check TS prefer-const in src/orders.ts and src/users.ts` | `--checks typescript --rules prefer-const -- src/orders.ts src/users.ts` |
+| `/check package dependency counts` | `--checks dependencies` |
+| `/check pending AI work in src/routes` | `--checks directives -- src/routes` |
+
+Resolve explicit paths relative to the target root. For descriptions such as “the order handlers” or “the changed TS files,” look up the matching paths first and pass only those paths. Use `capabilities --json` to validate rule and check IDs when needed. If a stated path scope resolves to zero files, report it and do not fall back to the whole project. If the requested rule is unavailable, report the limitation. Use an existing project command when the user requests an external check and the project supplies that command.
+
+Report the resolved file and rule scope, findings with locations, and relevant skipped paths or bypasses. Language checks use `--checks`; `--rules` selects exact native JS/TS policy IDs and respects project severity and overrides. The checker still validates syntax before examining rules. A rule such as `no-restricted-syntax` can cover several patterns, so identify that shared scope when the request names one of them.
+
+For broader checks on generated code, use the target project's configured tools. Examples include ESLint `no-useless-catch` and `@typescript-eslint/ban-ts-comment`, Ruff `S110` for `except: pass` and `TRY203` for a redundant re-raise, and Knip or an existing duplicate-code scanner for module-level review. Apply only the requested and available rules. Python source currently requires project tooling.
+
 ## Commands and coverage
 
 Resolve the executable from the installed skill and pass the target project through `--root`. Flags precede optional relative paths.
@@ -12,6 +30,8 @@ maintainable-check select --root . --json
 maintainable-check check --root . --json
 maintainable-check check --root . --checks dependencies,json --json
 maintainable-check check --root . --checks javascript,typescript src
+maintainable-check check --root . --rules maintainable/single-use-helper -- src/routes
+maintainable-check check --root . --checks directives -- src/routes
 maintainable-check check --root . --checks go,comments src
 ```
 
@@ -22,8 +42,9 @@ maintainable-check check --root . --checks go,comments src
 | `dependencies` | Declared package groups and unique names in package.json/Cargo.toml; direct/indirect Go require declarations |
 | `go` | Embedded grammar syntax, imports and function/method counts |
 | `comments` | AST comment groups and optional presence rule for JS/TS/Go |
+| `directives` | Source locations and descriptions for `@impl`, `@refactor` and `@check` in JS/TS comments |
 
-Default checks include all except `comments`; `--checks` selects a subset. Unknown or duplicate check IDs fail. Reports state selected, checked and unchecked files, per-check applicability and unsupported checks. `select` and `check --list` only list selection.
+Default checks exclude `comments` and `directives`; `--checks` selects a subset. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and unsupported checks. `select` and `check --list` only list selection.
 
 Go formatting is explicitly unsupported and does not silently pass. Keep project gofmt/type-check/formatter/typed-lint/behavior commands for their boundaries. Dependency metrics count declarations, not installed/transitive graphs, vulnerabilities or bundle size. Go manifest inspection is limited to require directives. Native style metrics do not claim arbitrary ESLint plugin compatibility.
 
@@ -47,9 +68,32 @@ Extension types are `javascript`, `typescript`, `json`, `toml`, `go` and `gomod`
 }
 ```
 
-Dependency/import limits are inactive until configured. Select `comments` to apply `requireComments`. The supplied rule IDs are `prefer-const`, `no-var`, `func-style`, `no-restricted-syntax`, `maintainable/cross-directory-imports`, `@typescript-eslint/consistent-type-imports`, `max-depth`, `complexity` and `max-lines`. IDs with legacy prefixes identify native policy rules; they do not invoke ESLint.
+Dependency/import limits are inactive until configured. Select `comments` to apply `requireComments`. Use `capabilities --json` for the native policy rule IDs, including `maintainable/single-use-helper`. IDs with legacy prefixes identify native policy rules in the standalone executable.
 
-Rules accept off/warn/error or numeric severities. Depth/complexity accept numeric thresholds; max-lines accepts a number or max/skipBlankLines/skipComments options. Func-style supports the supplied expression form. Use file-specific overrides for explicit exceptions. Inline ESLint comments do not disable native checks. Changes to exclusions, thresholds or severities are policy changes that need explanation.
+Rules accept off/warn/error or numeric severities. Depth/complexity accept numeric thresholds; max-lines accepts a number or max/skipBlankLines/skipComments options. Func-style supports the supplied expression form. Use file-specific overrides for explicit file policy. Changes to exclusions, thresholds or severities are policy changes that need explanation.
+
+## Local exceptions and work directives
+
+`maintainable/single-use-helper` is an error by default. The checker counts same-file references to private JS/TS functions by their resolved binding and reports one direct call site. Public declarations, references as values or framework callbacks, recursive calls inside the declaration, overloads, and generators are outside this rule. The diagnostic points to the declaration. Review evaluation order and return behavior when inlining.
+
+Put a standalone `@bypass` comment immediately before the JS/TS statement or declaration that contains the finding. Give its exact native policy rule ID and a reason. Use one directive per line.
+
+```typescript
+/* @bypass maintainable/single-use-helper -- Keep the retry and backoff policy together. */
+const fetchWithRetry = async () => { /* retry policy */ }
+```
+
+The bypass applies to the named rule within that statement or declaration. The report includes each suppressed finding and its reason. A malformed directive or one without an attached statement is an error. An enabled rule that runs and has no matching finding produces an unused-bypass error. A filtered-out or disabled rule does not produce an unused-bypass error.
+
+Record pending work in JS/TS comments. Put each tag and its description on one line. Block and documentation comments can contain multiple tag lines.
+
+```typescript
+// @impl Validate the order request body.
+// @check A missing customer ID returns 400 before calling createOrder.
+// @refactor Inline reserveStock into createOrder while preserving the transaction.
+```
+
+The `directives` check returns the tag, its text and its location in source order. When the user asks the agent to carry out the work, use nearby `@check` notes as acceptance criteria. Remove completed directives after verifying the behavior. Keep pending directives that still describe unresolved work.
 
 ## Reports and future review
 

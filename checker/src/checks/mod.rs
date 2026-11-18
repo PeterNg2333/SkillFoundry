@@ -1,11 +1,12 @@
 mod ast;
+mod directives;
 mod javascript;
 mod manifests;
 mod metrics;
 mod semantics;
 
 use crate::{
-    config::Resolved,
+    config::{RULES, Resolved, validate_rule_filter},
     report::{CheckStatus, Report},
 };
 use anyhow::{Context, Result, ensure};
@@ -39,10 +40,11 @@ const CATALOG: &[&str] = &[
     "javascript",
     "typescript",
     "comments",
+    "directives",
 ];
 
 pub fn capabilities() -> Value {
-    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":CATALOG,
+    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":CATALOG, "rules":RULES,
         "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "toml"],
         "unsupported":[{"id":"go-format","reason":"The native Rust checker does not implement gofmt. Run the project's Go formatter separately."},
         {"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
@@ -58,9 +60,20 @@ pub fn validate(names: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn run(root: &Path, settings: &Resolved, names: &[String], report: &mut Report) -> Result<()> {
+pub fn run(
+    root: &Path,
+    settings: &Resolved,
+    names: &[String],
+    rules: &[String],
+    report: &mut Report,
+) -> Result<()> {
     validate(names)?;
+    validate_rule_filter(rules)?;
     let selected = |name: &str| names.iter().any(|selected| selected == name);
+    ensure!(
+        rules.is_empty() || selected("javascript") || selected("typescript"),
+        "--rules requires a javascript or typescript check"
+    );
     let mut counts = BTreeMap::new();
     for (file, kind) in report
         .files
@@ -76,7 +89,9 @@ pub fn run(root: &Path, settings: &Resolved, names: &[String], report: &mut Repo
         let dependencies = manifest && selected("dependencies");
         let comments =
             matches!(kind.as_str(), "go" | "javascript" | "typescript") && selected("comments");
-        if !main && !dependencies && !comments {
+        let directives =
+            matches!(kind.as_str(), "javascript" | "typescript") && selected("directives");
+        if !main && !dependencies && !comments && !directives {
             continue;
         }
         let source =
@@ -86,7 +101,7 @@ pub fn run(root: &Path, settings: &Resolved, names: &[String], report: &mut Repo
             manifests::dependencies(&file, source, &settings.settings.limits, report);
             *counts.entry("dependencies".to_owned()).or_insert(0) += 1;
         }
-        if main || comments {
+        if main || comments || directives {
             match kind.as_str() {
                 "json" => manifests::json(&file, source, report),
                 "toml" => manifests::toml(&file, source, report),
@@ -108,6 +123,8 @@ pub fn run(root: &Path, settings: &Resolved, names: &[String], report: &mut Repo
                     &settings.settings,
                     main,
                     comments,
+                    directives,
+                    rules,
                     report,
                 )?,
                 _ => {}
@@ -117,6 +134,9 @@ pub fn run(root: &Path, settings: &Resolved, names: &[String], report: &mut Repo
             }
             if comments {
                 *counts.entry("comments".to_owned()).or_insert(0) += 1;
+            }
+            if directives {
+                *counts.entry("directives".to_owned()).or_insert(0) += 1;
             }
         }
         report.summary.checked += 1;

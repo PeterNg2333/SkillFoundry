@@ -26,10 +26,13 @@ sh scripts/build.sh
 skills/maintainable-code/bin/maintainable-check.exe capabilities --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks dependencies,json --json
+skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --rules maintainable/single-use-helper -- src/routes
 skills/maintainable-code/bin/maintainable-check.exe select --root /path/to/project --json
 ```
 
 The executable is named `maintainable-check` on Linux/macOS. All parsing runs in that executable. It applies extension routing, `checkignore.json`, scoped Git ignores and the root Docker ignore before checking. Use `--checks` to run only the needed subset.
+
+In the skill, use `$maintainable-code /check single-use helpers in src/routes` for a scoped check and `$maintainable-code /help` for examples.
 
 Coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Go formatting is explicitly unsupported; keep the project's own `gofmt` check. The checker does not replace project type checking. See [check commands and policy](skills/maintainable-code/references/checks.md), [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).
 
@@ -46,7 +49,7 @@ Packaging and the supplied installer need Python 3.10+ with its standard library
 ```sh
 python -m unittest discover -s scripts -p 'test_*.py'
 sh scripts/package.sh maintainable-code
-sh scripts/install.sh dist/maintainable-code-0.2.0-windows-amd64.zip --replace
+sh scripts/install.sh dist/maintainable-code-0.3.0-windows-amd64.zip --replace
 ```
 
 The ZIP includes the executable, instructions, source metadata and resolved Rust dependency notices. It contains no Node packages or legacy checker source. `distribution.json` records version/platform/source revision; `.installation.json` records the archive hash, source and time. `dist/SHA256SUMS` contains archive hashes. Package from a clean commit to identify exact source.
@@ -56,11 +59,11 @@ Instruction-only skills produce `<name>-<version>-any.zip`. The native build int
 Get the installer scripts by cloning this repository or downloading its source ZIP. Once published, download a release asset with:
 
 ```sh
-sh scripts/install.sh --github OWNER/SkillFoundry --version 0.2.0 --replace
-sh scripts/install.sh --url https://example.com/maintainable-code-0.2.0-windows-amd64.zip --replace
+sh scripts/install.sh --github OWNER/SkillFoundry --version 0.3.0 --replace
+sh scripts/install.sh --url https://example.com/maintainable-code-0.3.0-windows-amd64.zip --replace
 ```
 
-Replace `OWNER` after publication. `--github` chooses the host platform and release `v0.2.0`. For an instruction-only skill, also pass `--skill <name> --platform any`. `--dest <directory>` chooses a separate installation root. Replacement is staged and restores the previous copy on failure; if restoration fails, its backup path is retained and reported.
+Replace `OWNER` after publication. `--github` chooses the host platform and the release matching `--version`. For an instruction-only skill, also pass `--skill <name> --platform any`. `--dest <directory>` chooses a separate installation root. Replacement is staged and restores the previous copy on failure. If restoration fails, the installer reports the retained backup path.
 
 ## Publish
 

@@ -30,8 +30,15 @@ enum Command {
         paths: Vec<PathBuf>,
     },
     Check {
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, value_delimiter = ',', help = "Check groups from capabilities")]
         checks: Vec<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            conflicts_with = "list",
+            help = "Exact native JS/TS policy rule IDs from capabilities"
+        )]
+        rules: Vec<String>,
         #[arg(long)]
         list: bool,
         paths: Vec<PathBuf>,
@@ -46,31 +53,32 @@ fn run() -> Result<i32> {
     }
     let root = dunce::canonicalize(&cli.root).context("resolve check root")?;
     let settings = config::load(&root, cli.config.as_deref())?;
-    let (paths, list, names) = match cli.command {
-        Command::Select { paths } => (paths, true, Vec::new()),
+    let (paths, list, names, rules) = match cli.command {
+        Command::Select { paths } => (paths, true, Vec::new(), Vec::new()),
         Command::Check {
             paths,
             list,
-            checks,
-        } => (
-            paths,
-            list,
+            mut checks,
+            rules,
+        } => {
             if checks.is_empty() {
-                checks::DEFAULT_CHECKS
-                    .iter()
-                    .map(|name| (*name).to_owned())
-                    .collect()
-            } else {
-                checks
-            },
-        ),
+                let defaults = if rules.is_empty() {
+                    checks::DEFAULT_CHECKS
+                } else {
+                    &["javascript", "typescript"]
+                };
+                checks.extend(defaults.iter().map(|name| (*name).to_owned()));
+            }
+            (paths, list, checks, rules)
+        }
         Command::Capabilities => unreachable!(),
     };
     let selected = selection::select(&root, &paths, &settings)?;
     let mut result = report::Report::new(root.display().to_string(), selected, &settings, list);
     if !list {
-        checks::run(&root, &settings, &names, &mut result)?;
+        checks::run(&root, &settings, &names, &rules, &mut result)?;
     }
+    result.rule_filter = rules;
     result.finish();
     let mut output = io::stdout().lock();
     if cli.json {
@@ -91,6 +99,26 @@ fn run() -> Result<i32> {
                 finding.severity,
                 finding.rule,
                 finding.message
+            )?;
+        }
+        for bypass in &result.bypasses {
+            let finding = &bypass.finding;
+            writeln!(
+                output,
+                "{}:{}:{} bypassed {} at line {}: {}",
+                finding.file,
+                finding.line,
+                finding.column,
+                finding.rule,
+                bypass.directive_line,
+                bypass.reason
+            )?;
+        }
+        for directive in &result.directives {
+            writeln!(
+                output,
+                "{}:{}:{} @{} {}",
+                directive.file, directive.line, directive.column, directive.kind, directive.text
             )?;
         }
         for metric in &result.metrics {

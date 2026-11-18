@@ -1,11 +1,17 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use globset::{GlobBuilder, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-const RULES: &[&str] = &[
+pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
+
+pub const RULES: &[&str] = &[
     "prefer-const",
     "no-var",
     "func-style",
@@ -15,7 +21,17 @@ const RULES: &[&str] = &[
     "max-depth",
     "complexity",
     "max-lines",
+    SINGLE_USE_HELPER,
 ];
+
+pub fn validate_rule_filter(rules: &[String]) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    for rule in rules {
+        ensure!(RULES.contains(&rule.as_str()), "unknown rule {rule}");
+        ensure!(seen.insert(rule), "duplicate rule {rule}");
+    }
+    Ok(())
+}
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
@@ -183,10 +199,13 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
     })
 }
 
-pub struct Policy(BTreeMap<String, Value>);
+pub struct Policy<'a> {
+    rules: BTreeMap<String, Value>,
+    filter: &'a [String],
+}
 
-impl Policy {
-    pub fn for_file(settings: &Settings, path: &str) -> Result<Self> {
+impl<'a> Policy<'a> {
+    pub fn for_file(settings: &Settings, path: &str, filter: &'a [String]) -> Result<Self> {
         let mut rules: BTreeMap<_, _> = RULES
             .iter()
             .map(|name| (name.to_string(), json!("error")))
@@ -204,11 +223,14 @@ impl Policy {
                 rules.extend(rule_override.rules.clone());
             }
         }
-        Ok(Self(rules))
+        Ok(Self { rules, filter })
     }
 
     pub fn severity(&self, name: &str) -> Option<&str> {
-        let value = self.0.get(name)?;
+        if !self.filter.is_empty() && !self.filter.iter().any(|rule| rule == name) {
+            return None;
+        }
+        let value = self.rules.get(name)?;
         let severity = value
             .as_array()
             .and_then(|values| values.first())
@@ -221,7 +243,7 @@ impl Policy {
     }
 
     pub fn option(&self, name: &str) -> Option<&Value> {
-        self.0.get(name)?.as_array()?.get(1)
+        self.rules.get(name)?.as_array()?.get(1)
     }
 
     pub fn threshold(&self, name: &str, default: u64) -> u64 {

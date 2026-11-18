@@ -14,6 +14,25 @@ pub struct Finding {
     pub rule: String,
     pub message: String,
     pub origin: &'static str,
+    #[serde(skip)]
+    pub offset: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bypass {
+    pub finding: Finding,
+    pub directive_line: usize,
+    pub reason: String,
+}
+
+#[derive(Serialize)]
+pub struct Directive {
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
+    pub kind: &'static str,
+    pub text: String,
 }
 
 #[derive(Serialize)]
@@ -61,7 +80,24 @@ pub struct Report {
     pub diagnostics: Vec<Finding>,
     pub metrics: Vec<Metric>,
     pub checks: Vec<CheckStatus>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rule_filter: Vec<String>,
+    pub bypasses: Vec<Bypass>,
+    pub directives: Vec<Directive>,
     pub summary: Summary,
+}
+
+pub fn source_location(source: &str, offset: usize) -> (usize, usize) {
+    let prefix = &source[..offset.min(source.len())];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix
+        .rsplit('\n')
+        .next()
+        .unwrap_or("")
+        .encode_utf16()
+        .count()
+        + 1;
+    (line, column)
 }
 
 impl Report {
@@ -84,6 +120,9 @@ impl Report {
             diagnostics: Vec::new(),
             metrics: Vec::new(),
             checks: Vec::new(),
+            rule_filter: Vec::new(),
+            bypasses: Vec::new(),
+            directives: Vec::new(),
             summary,
         }
     }
@@ -97,16 +136,7 @@ impl Report {
         rule: &str,
         message: impl Into<String>,
     ) {
-        let offset = offset.min(source.len());
-        let prefix = &source[..offset];
-        let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
-        let column = prefix
-            .rsplit('\n')
-            .next()
-            .unwrap_or("")
-            .encode_utf16()
-            .count()
-            + 1;
+        let (line, column) = source_location(source, offset);
         self.diagnostics.push(Finding {
             file: file.to_owned(),
             line,
@@ -115,6 +145,7 @@ impl Report {
             rule: rule.to_owned(),
             message: message.into(),
             origin: "static",
+            offset,
         });
     }
 

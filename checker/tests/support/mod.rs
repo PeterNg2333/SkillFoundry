@@ -17,7 +17,7 @@ impl Project {
 
     pub fn run(&self, arguments: &[&str], isolated: bool) -> (i32, Value, String) {
         let mut command = Command::new(env!("CARGO_BIN_EXE_maintainable-check"));
-        command.args(arguments).arg("--root").arg(self.0.path());
+        command.arg("--root").arg(self.0.path()).args(arguments);
         if isolated {
             command.env("PATH", "");
         }

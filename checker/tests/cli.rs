@@ -3,6 +3,195 @@ mod support;
 use serde_json::json;
 use support::{Project, diagnostic};
 
+const SINGLE_USE: &str = "maintainable/single-use-helper";
+
+#[test]
+fn filters_rules_and_counts_direct_calls_by_binding() {
+    let project = Project::new(&[
+        (
+            "src/one.ts",
+            "var state = 0; const helper = () => 1; export const run = () => helper();",
+        ),
+        (
+            "src/two.ts",
+            "const helper = () => 1; const run = () => helper() + helper(); export { run };",
+        ),
+        (
+            "src/shadow.ts",
+            "const helper = () => 1; const run = () => { const helper = () => 2; return helper() + helper(); }; const value = helper(); export { run, value };",
+        ),
+        (
+            "src/component.tsx",
+            "const Component = () => <div />; const call = () => Component(); const render = () => <Component />; export { call, render };",
+        ),
+        (
+            "src/callback.ts",
+            "const callback = () => 1; const call = () => callback(); const register = [callback]; export { call, register };",
+        ),
+        (
+            "src/recursive.ts",
+            "const walk = (n: number): number => n === 0 ? 0 : walk(n - 1); export const run = () => walk(2);",
+        ),
+        (
+            "src/public.ts",
+            "const helper = () => 1; const run = () => helper(); export { helper as publicHelper, run };",
+        ),
+        (
+            "src/framework.cjs",
+            "const plugin = () => 1; module.exports = plugin; plugin();",
+        ),
+        (
+            "src/nested.js",
+            "const run = () => { const helper = () => 1; return helper(); }; export { run };",
+        ),
+        (
+            "outside.ts",
+            "const helper = () => 1; export const run = () => helper();",
+        ),
+        ("bad.json", "not json"),
+    ]);
+    let (status, report, stderr) = project.run(
+        &["check", "--json", "--rules", SINGLE_USE, "--", "src"],
+        true,
+    );
+    assert_eq!(status, 1, "{stderr}\n{report}");
+    assert_eq!(report["ruleFilter"], json!([SINGLE_USE]));
+    assert_eq!(report["metrics"], json!([]));
+    let findings = report["diagnostics"].as_array().unwrap();
+    let actual: Vec<_> = findings
+        .iter()
+        .map(|finding| (&finding["file"], &finding["rule"]))
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            (&json!("src/nested.js"), &json!(SINGLE_USE)),
+            (&json!("src/one.ts"), &json!(SINGLE_USE)),
+            (&json!("src/shadow.ts"), &json!(SINGLE_USE))
+        ]
+    );
+    let capabilities = project.success(&["capabilities", "--json"], true);
+    assert!(
+        capabilities["rules"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(SINGLE_USE))
+    );
+    let (status, report, stderr) = project.run(&["check", "--json", "src/one.ts"], true);
+    assert_eq!(status, 1, "{stderr}\n{report}");
+    assert!(diagnostic(&report, SINGLE_USE).is_some());
+    assert!(diagnostic(&report, "no-var").is_some());
+    for args in [
+        vec!["check", "--rules", "unknown"],
+        vec!["check", "--rules", SINGLE_USE, "--checks", "json"],
+    ] {
+        assert_eq!(project.run(&args, true).0, 2);
+    }
+}
+
+#[test]
+fn bypasses_only_the_attached_rule_and_checks_for_unused_bypasses() {
+    let project = Project::new(&[
+        (
+            "suppressed.ts",
+            "/* @bypass maintainable/single-use-helper -- Keep the retry boundary. */\nconst retry = () => { let value = 1; return value; };\nconst other = () => 2;\nexport const run = () => retry() + other();",
+        ),
+        (
+            "stale.ts",
+            "// @bypass maintainable/single-use-helper -- Keep the retry boundary.\nconst retry = () => 1;\nexport const run = () => retry() + retry();",
+        ),
+        (
+            "invalid.ts",
+            "// @bypass maintainable/single-use-helper --\nconst retry = () => 1;\nconst run = () => retry(); export { run };",
+        ),
+        (
+            "off.ts",
+            "// @bypass maintainable/single-use-helper -- Keep the retry boundary.\nconst retry = () => 1;\nconst run = () => retry(); export { run };",
+        ),
+        (
+            "checkignore.json",
+            r#"{"overrides":[{"files":["off.ts"],"rules":{"maintainable/single-use-helper":"off"}}]}"#,
+        ),
+    ]);
+    let (status, report, stderr) = project.run(&["check", "--json", "--rules", SINGLE_USE], true);
+    assert_eq!(status, 1, "{stderr}\n{report}");
+    let bypasses = report["bypasses"].as_array().unwrap();
+    assert_eq!(bypasses.len(), 1);
+    assert_eq!(bypasses[0]["finding"]["line"], 2);
+    assert_eq!(bypasses[0]["reason"], "Keep the retry boundary.");
+    assert_eq!(
+        diagnostic(&report, "maintainable/unused-bypass").unwrap()["file"],
+        "stale.ts"
+    );
+    assert_eq!(
+        diagnostic(&report, "maintainable/invalid-bypass").unwrap()["file"],
+        "invalid.ts"
+    );
+    assert!(
+        report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| finding["file"] == "suppressed.ts"
+                && finding["line"] == 3
+                && finding["rule"] == SINGLE_USE)
+    );
+    let other_rule = project.success(
+        &["check", "--json", "--rules", "prefer-const", "stale.ts"],
+        true,
+    );
+    assert_eq!(other_rule["diagnostics"], json!([]));
+    let combined_rules = format!("{SINGLE_USE},prefer-const");
+    let (status, report, stderr) = project.run(
+        &[
+            "check",
+            "--json",
+            "--rules",
+            &combined_rules,
+            "suppressed.ts",
+        ],
+        true,
+    );
+    assert_eq!(status, 1, "{stderr}\n{report}");
+    assert_eq!(diagnostic(&report, "prefer-const").unwrap()["line"], 2);
+    assert_eq!(report["bypasses"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn lists_only_real_comment_directives_in_selected_files() {
+    let project = Project::new(&[
+        (
+            "src/route.ts",
+            "const sample = '// @impl Ignore this string';\n// @impl Validate the body.\n// @check Return 400 for a missing ID.\n/**\n * @refactor Keep the response contract.\n */\nvar state = 0;",
+        ),
+        ("outside.ts", "// @impl Outside the selected directory."),
+    ]);
+    let report = project.success(&["check", "--json", "--checks", "directives", "src"], true);
+    let directives = report["directives"].as_array().unwrap();
+    let actual: Vec<_> = directives
+        .iter()
+        .map(|directive| (&directive["kind"], &directive["line"], &directive["text"]))
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            (&json!("impl"), &json!(2), &json!("Validate the body.")),
+            (
+                &json!("check"),
+                &json!(3),
+                &json!("Return 400 for a missing ID.")
+            ),
+            (
+                &json!("refactor"),
+                &json!(5),
+                &json!("Keep the response contract.")
+            )
+        ]
+    );
+    assert_eq!(report["diagnostics"], json!([]));
+    assert_eq!(report["checks"][0]["files"], 1);
+}
+
 #[test]
 fn matches_moby_docker_reference_patterns() {
     let fixture: serde_json::Value =
