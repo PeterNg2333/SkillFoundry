@@ -46,7 +46,7 @@ Exit codes are 0 for completed checks without errors, 1 for error findings, and 
 - Go parsing, imports, functions and comment groups use the embedded grammar. `go-format` is explicitly unsupported; projects retain their own `gofmt` check.
 - Dependency measurements count manifest declarations, not installed trees, vulnerability findings or bundle size. Go module analysis covers `require` declarations without resolving modules.
 - Complexity and depth use the supplied native metric definitions. The engine does not host arbitrary ESLint plugins. Unknown rules and unsupported options fail configuration validation.
-- No model API is called. A future bounded review can consume schema-versioned findings and metrics with separate provenance. It must preserve static results and have an explicit opt-in policy before implementation.
+- The standalone checker makes no model calls. The skill provides opt-in contextual review of selected files and can use native findings as evidence. The CLI owns its diagnostics and exit codes.
 
 ## Distribution
 

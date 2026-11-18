@@ -32,7 +32,7 @@ skills/maintainable-code/bin/maintainable-check.exe select --root /path/to/proje
 
 The executable is named `maintainable-check` on Linux/macOS. All parsing runs in that executable. It applies extension routing, `checkignore.json`, scoped Git ignores and the root Docker ignore before checking. Use `--checks` to run only the needed subset.
 
-In the skill, use `$maintainable-code /check single-use helpers in src/routes` for a scoped check and `$maintainable-code /help` for examples.
+In the skill, use `$maintainable-code /check single-use helpers in src/routes` for a scoped check and `$maintainable-code /help` for examples. Use `/add-smell` to record a rule or `/review-smells` to request contextual review. See [code smell rules and examples](skills/maintainable-code/references/smells.md).
 
 Coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Go formatting is explicitly unsupported; keep the project's own `gofmt` check. The checker does not replace project type checking. See [check commands and policy](skills/maintainable-code/references/checks.md), [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).
 

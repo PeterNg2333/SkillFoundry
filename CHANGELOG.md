@@ -3,6 +3,7 @@
 ## 0.3.0 - Unreleased
 
 - Add skill shortcuts `/check [description]` and `/help`. Scope checks to resolved paths and exact native JS/TS rules with `--rules`.
+- Add `/add-smell` and opt-in `/review-smells`, with criteria for ownership, naming, control flow, validation, FP/OOP, and behavior-focused tests.
 - Report private JS/TS helpers with one direct call site as errors. Inline them or document a statement-scoped `@bypass` when a separate function owns a meaningful responsibility.
 - Exempt inline exported functions and const bindings from single-use helper diagnostics.
 - Add optional `directives` analysis for `@impl`, `@refactor`, and `@check` comments, and audit skipped findings in the bypass report.

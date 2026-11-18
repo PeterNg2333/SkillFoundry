@@ -14,6 +14,8 @@ Use `/help` to see the syntax and supported scope. These are skill prompt shortc
 | `/check package dependency counts` | `--checks dependencies` |
 | `/check pending AI work in src/routes` | `--checks directives -- src/routes` |
 
+Use `/add-smell` to record a new smell and `/review-smells` to request contextual review. See [smell rules and examples](smells.md) for those skill prompts.
+
 Resolve explicit paths relative to the target root. For descriptions such as “the order handlers” or “the changed TS files,” look up the matching paths first and pass only those paths. Use `capabilities --json` to validate rule and check IDs when needed. If a stated path scope resolves to zero files, report it and do not fall back to the whole project. If the requested rule is unavailable, report the limitation. Use an existing project command when the user requests an external check and the project supplies that command.
 
 Report the resolved file and rule scope, findings with locations, and relevant skipped paths or bypasses. Language checks use `--checks`; `--rules` selects exact native JS/TS policy IDs and respects project severity and overrides. The checker still validates syntax before examining rules. A rule such as `no-restricted-syntax` can cover several patterns, so identify that shared scope when the request names one of them.
@@ -95,11 +97,11 @@ Record pending work in JS/TS comments. Put each tag and its description on one l
 
 The `directives` check returns the tag, its text and its location in source order. When the user asks the agent to carry out the work, use nearby `@check` notes as acceptance criteria. Remove completed directives after verifying the behavior. Keep pending directives that still describe unresolved work.
 
-## Reports and future review
+## Reports and contextual review
 
 JSON schema version 1 carries file/line/column, severity, rule, message and static provenance, plus metrics and check coverage. Exit codes are 0 without error findings, 1 with error findings, and 2 for configuration/operational failures. Warnings remain visible and require a disposition in the handoff.
 
-A future small-model stage can consume these reports and bounded source ranges. It needs explicit opt-in, a budget and separate model/prompt/usage provenance. The current binary makes no model calls. Comment usefulness, ownership and cohesion remain review tasks.
+An explicit `/review-smells` request applies the skill's contextual criteria to source. Use native findings as evidence when relevant. The CLI owns its static findings and exit code. See [contextual review](smells.md#review-a-scope) for evidence and reporting.
 
 ## Source verification
 

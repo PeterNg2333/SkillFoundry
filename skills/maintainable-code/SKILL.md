@@ -1,6 +1,6 @@
 ---
 name: maintainable-code
-description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, or native source checks. Supports /check with a natural-language file and rule scope and /help with usage examples."
+description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, scoped static checks, or recording and reviewing code smells."
 ---
 
 # Maintainable Code
@@ -9,10 +9,12 @@ Make each agreed phase easy to understand, verify and continue. Apply the user's
 
 ## Shortcuts
 
-- `/help` shows the shortcut syntax, scope examples, and supported checks. Read [checks.md](references/checks.md) and answer without scanning the project.
+- `/help` shows the shortcut syntax, scope examples, and supported checks. Read [checks.md](references/checks.md) and [smells.md](references/smells.md) and answer without scanning the project.
 - `/check [description]` runs static checks. Read [checks.md](references/checks.md) to translate the description into project-relative paths, check IDs and rule IDs. With no description, run the project's default native check scope.
+- `/add-smell [example or description]` records or updates a reusable smell in the source skill. Read [smells.md](references/smells.md) to choose a deterministic check or contextual review rule and record the evidence.
+- `/review-smells [scope]` explicitly requests read-only contextual review. Apply the criteria in [smells.md](references/smells.md) to the named files or feature.
 
-Use `$maintainable-code /check …` or `$maintainable-code /help` to select this skill explicitly. Treat `/check` as a read-only request. Carry out source work directives when the user asks to implement or refactor them.
+Prefix a shortcut with `$maintainable-code` to select this skill explicitly. Treat `/check` as a read-only request. Carry out source work directives when the user asks to implement or refactor them.
 
 ## Maintain this skill
 

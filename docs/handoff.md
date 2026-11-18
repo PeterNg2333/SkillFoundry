@@ -1,46 +1,33 @@
 # Current handoff
 
+Updated 2026-11-19.
+
 ## Status
 
-Version 0.3.0 adds scoped checking and work directives to the `maintainable-code` skill. The Rust migration in 0.2.0 established the standalone executable and shell build and distribution entry points.
+- The standalone checker is at 0.3.0. `/check` resolves paths and exact native rule IDs. The current JS/TS rules cover syntax, selected style and import policy, nesting, complexity, file length, and private helpers with one direct caller. The CLI reports unsupported checks explicitly and supports audited, statement-scoped `@bypass` comments.
+- `/add-smell` records a deterministic check or contextual rule from examples. `/review-smells` is an explicit read-only skill prompt that examines callers, boundaries, and tests. Native findings and CI exit codes come from `/check`. The [worked example](../skills/maintainable-code/references/smells.md) covers naming, feature ownership, early returns, a Zod input boundary, FP/OOP, and behavior-focused tests.
+- The 0.3.1-smells.2 Windows preview was built from a working tree with source changes. The version for a formal release is pending.
 
-The Playback pilot verified the inline export fix on 2026-11-18. The Windows ZIP records its exact source commit in `distribution.json`.
+## Verified evidence
 
-## Delivered
+- `sh scripts/build.sh` passed rustfmt, all 18 CLI tests, Clippy, and the Windows release build. All seven distribution tests and the skill validator passed. The preview passed isolated installation, ZIP hash verification, and a standalone run with an empty PATH. Refreshing `dist/SHA256SUMS` was blocked by read permissions on the existing 0.3.0 ZIP.
+- The worked example passed strict TypeScript and runtime Zod checks. The native scanner reported one single-use lookup helper before the rewrite and zero after it. The examples verified normal totals, zero totals, missing orders, and rejection of malformed input at the revised boundary.
+- At Playback revision `caaf55a`, the export fix reduced the `app-temp/web` single-use scan from 34 to 25 findings across 106 TypeScript files. The focused recording scan returned 10 findings across eight files. Manual source review suggested inlining two, retaining seven, and testing the `audioContext` failure path. `speaking` and `backoff` are examples of a local predicate and a helper that owns cleanup.
+- The Playback default scan reported 1,006 errors across 137 files, including 966 from function, export, and import style rules. A separate AST scan of 105 JS/TS source files found 20 catch clauses, with zero empty blocks and zero direct rethrows. The C# backend is outside native coverage.
+- Earlier migration baselines covered 14 Moby ignore patterns, a 33-file LinkOS scan, and isolated installation of the 0.2.0 and 0.3.0 ZIPs. See [changelog](../CHANGELOG.md) and [architecture](architecture.md).
 
-- `/check [description]` resolves the requested paths and rules. `/help` shows usage. The CLI accepts exact JS/TS rule IDs through `--rules` and publishes them through `capabilities`.
-- The `maintainable/single-use-helper` rule is an error by default because the skill prefers a single caller to own its helper logic. JS/TS checks accept rule-specific `@bypass` comments scoped to a following statement or declaration, with auditable reasons and unused-bypass diagnostics.
-- The optional `directives` check lists `@impl`, `@refactor`, and `@check` comments. Python source checks use the target project's tools.
-- Checker source is one Cargo package under `checker/`, separated from skill instructions.
-- ast-grep supplies structural rules and embedded grammars; Oxc supplies JS/TS syntax and scoped mutation/type-reference analysis. Git/Docker/config exclusions and extension routing run before analysis.
-- One CLI supplies selection, partial checks, metrics, static provenance and unsupported-check reporting. Go formatting is explicitly unsupported; project gofmt and type-check commands remain required.
-- Reusable defaults and YAML rules have single owners. The old Go source, Node profile, bridge and pnpm dependencies are removed from current source and new release ZIPs.
-- Build/package/install use `scripts/*.sh`. Python standard-library tools own ZIP distribution; no Python participates in checking.
+## Existing tools
 
-## Verification
+| Scope | Existing tools |
+| --- | --- |
+| Maintainability baselines | SonarQube tracks code smells, cognitive complexity, duplication, and metrics for quality gates on new code. [SonarQube metrics](https://docs.sonarsource.com/sonarqube-server/user-guide/code-metrics/metrics-definition) |
+| Syntax and type signals | ESLint checks redundant catches, depth, and cyclomatic complexity. typescript-eslint can flag conditions whose truthiness is fixed by the type. [ESLint rules](https://eslint.org/docs/latest/rules/) · [Type-aware conditions](https://typescript-eslint.io/rules/no-unnecessary-condition/) |
+| Dependencies and duplication | dependency-cruiser validates declared import boundaries and cycles. jscpd finds duplicate token sequences and near-matches using normalized function ASTs. [Dependency rules](https://github.com/sverweij/dependency-cruiser/blob/main/doc/rules-reference.md) · [jscpd similarity](https://jscpd.dev/guides/similarity) |
+| Design smells and contextual review | JDeodorant detects Java smells such as Feature Envy and God Class. CodeRabbit combines path-specific review guidance with optional ast-grep patterns. [JDeodorant](https://github.com/tsantalis/jdeodorant) · [CodeRabbit review rules](https://docs.coderabbit.ai/pr-reviews/review-instructions) |
 
-- For 0.3.0, the new CLI regression failed against 0.2.0 at the missing `--rules` flag. `sh scripts/build.sh` passed rustfmt, all 17 CLI tests, Clippy with warnings denied, and the Windows MSVC release build. All seven distribution tests and the skill frontmatter validator passed.
-- The 0.3.0 Windows ZIP passed isolated installation and checksum verification. With an empty PATH, the installed executable verified rule and path filtering, an audited bypass, and directive discovery.
+## Decisions pending
 
-### Playback pilot
-
-- At Playback revision `caaf55a`, the original checker reported 34 single-use helpers across 106 TypeScript files in `app-temp/web`. Nine were inline exports, including `useDismiss`, which is used by other modules. The regression covers named function and const exports, a default export, and a private function nested in an exported function.
-- After the fix, `sh scripts/build.sh` passed all 18 CLI tests, rustfmt, Clippy, and the Windows release build. The focused run reported 25 findings in 16 files. Keep helpers that own a distinct lifecycle, such as the upload retry wait, eligible for a documented local bypass.
-- The default run checked 137 files and reported 1,006 errors and 151 warnings. Of the errors, 966 came from existing function, export, and import style rules. Compared with the previous run, only the 15 single-use export false positives disappeared. The C# backend is outside the native check scope.
-
-### 0.2.0 migration verification
-
-- CLI regressions passed 14/14, including native syntax/style, decorators, overload scope, semantic mutation, type-only imports, partial-check isolation, nested ignores, normalized import paths, Cargo target dependencies and failure cases.
-- Docker selection matched the previous Moby-backed checker for 14 reference patterns; those expectations are retained as fixtures.
-- rustfmt and Clippy with warnings denied passed. Windows MSVC static-runtime release build passed through `sh scripts/build.sh`.
-- Distribution regressions passed 7/7, including replacement/rollback, retained recovery backup and instruction-only packaging.
-- Rust checked all 33 selected LinkOS files with 0 errors and the same two max-depth warnings at `apps/desktop/scripts/dev.mjs:59` and `:61`. Preserve those warnings for review.
-- The 3.65 MB Windows ZIP installed successfully into an isolated skills directory. Its release executable ran with an empty PATH and no sidecar files; native JS/TS, JSON, Go, dependencies and comments completed successfully. Installed-version receipts own the final source revision and archive hash.
-
-## Next phase: Code smell checks and optional subagent review
-
-1. Start with the Playback single-use findings under `app-temp/web/src/features/recording`. Rerun the scoped static check and, when explicitly requested, delegate review to one read-only subagent. Give it each finding, the declaration, the actual caller, and relevant tests. Ask it to recommend inlining, retaining the helper with a factual bypass reason, fixing a checker false positive, or gathering more evidence. Require file and line references. `speaking` and `backoff` are useful examples with different outcomes.
-2. Capture that workflow in the skill. Keep plain `/check` deterministic. An explicit request for a subagent enables contextual review of the selected findings. Keep the native findings and exit code authoritative for CI. Review reports recommend changes for the user to approve.
-3. Add high-signal rules one at a time from real examples. Check empty or redundant exception handlers with AST rules or the target project's existing linter. Use compiler information for type-dependent rules and a dependency graph for module boundaries. Start duplicate detection with token or normalized AST matching. Evaluate code embeddings later if real duplicates with different structures are missed, and use similarity results as review candidates.
-
-The subagent workflow and additional smell checks are planned work. The default Playback scan is a baseline for review.
+1. **CI policy.** Decide which TS rules should block CI on the pilot project. Review single-use severity and the function, export, and import rules against the Playback baseline before adopting a project profile. Project overrides belong in `checkignore.json`.
+2. **Next check.** Decide whether the next gap is duplication or import boundaries. For duplication, compare jscpd token and AST results on a single feature and assess which pairs should change together. For boundaries, inspect the project's intended import graph before writing dependency-cruiser rules. Use real counterexamples to justify a new native rule.
+3. **Reviewer acceptance.** Compare `/review-smells` with the ten manually reviewed recording findings. Check whether it cites the real caller and relevant behavior tests, preserves ownership and lifecycle boundaries, and marks uncertainty about failure paths. Test the optional subagent path when explicitly requested.
+4. **Release.** Decide when to publish the shortcuts after the pilot. Build the candidate ZIP from a clean commit and verify the checksum index and installed skill before promoting it.
