@@ -4,6 +4,55 @@ use serde_json::json;
 use support::{Project, diagnostic};
 
 const SINGLE_USE: &str = "maintainable/single-use-helper";
+const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
+
+#[test]
+fn object_spread_newline_is_an_opt_in_warning() {
+    let inline = (
+        "inline.ts",
+        "const reverse = { ...data, id, source, target };",
+    );
+    let args = ["check", "--json", "--rules", OBJECT_SPREAD_NEWLINE];
+    let default = Project::new(&[inline]).success(&args, true);
+    assert!(diagnostic(&default, OBJECT_SPREAD_NEWLINE).is_none());
+
+    let enabled = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{"rules":{"maintainable/object-spread-newline":"warn"}}"#,
+        ),
+        inline,
+        (
+            "partial.js",
+            "const reverse = {\r\n  ...data, id,\r\n  source,\r\n  target,\r\n};",
+        ),
+        (
+            "allowed.ts",
+            r#"const separated = {
+    ...data,
+    id,
+    // Keep the source and target together in the data model.
+    source,
+    target,
+};
+const compact = { ...data, id };
+const plain = { id, source, target, cost };
+const fewerFields = { ...first, ...last, id, target };
+const { id: key, source: from, target: to, ...rest } = data;"#,
+        ),
+    ])
+    .success(&args, true);
+
+    assert_eq!(enabled["summary"]["warnings"], 2);
+    assert_eq!(enabled["summary"]["errors"], 0);
+    let findings = enabled["diagnostics"].as_array().unwrap();
+    assert_eq!(findings.len(), 2);
+    for (finding, file) in findings.iter().zip(["inline.ts", "partial.js"]) {
+        assert_eq!(finding["rule"], OBJECT_SPREAD_NEWLINE);
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["file"], file);
+    }
+}
 
 #[test]
 fn filters_rules_and_counts_direct_calls_by_binding() {

@@ -27,6 +27,20 @@ A private JS/TS helper with one direct call site adds a jump for the reader. The
 
 In the example below, `get` only forwards the order lookup and has one direct caller. The revised example keeps the lookup where its result is used. A helper with multiple callers falls outside this signal. Review resource ownership and behavior before deciding whether a reported helper should be inlined.
 
+### `maintainable/object-spread-newline` · Deterministic
+
+Separate entries with line breaks in a JavaScript or TypeScript object literal that has a spread and at least three other properties. The checker reports one finding at the object when adjacent entries share a line. The rule defaults to off. To opt in, add this rule to the project's `checkignore.json`.
+
+```json
+{
+  "rules": {
+    "maintainable/object-spread-newline": "warn"
+  }
+}
+```
+
+For example, expand `{ ...data, id, source, target }` so each entry has its own line. A compact update such as `{ ...data, id }` stays within the rule's limit.
+
 ### `explicit-feature-flow` · Contextual review
 
 Make ownership, names, decisions and public behavior easy to follow. Report a finding when a caller or likely change exposes a specific cost.
@@ -35,6 +49,8 @@ Make ownership, names, decisions and public behavior easy to follow. Report a fi
 - **Names and flow.** Name values for their role, such as `orders` and `orderId`. Use an early `if` return to make a missing or invalid case explicit. Keep a short lookup and projection together. Keep a separate helper when it owns a meaningful responsibility such as retry cleanup.
 - **Defensive code.** Trace the input to the runtime boundary. Validate untrusted TypeScript inputs with the project's schema tool, such as Zod. Keep fallbacks for known recoverable failures. Flag repeated guards after validation or a broad catch that turns unexpected failures into an ordinary result.
 - **FP or OOP.** Identify which rules and state change together. Use an object when it gives domain behavior, invariants, or lifecycle a clear owner. Use a pure function when the work is a transformation or calculation over explicit inputs. Explain how the choice affects an existing caller or a likely change.
+- **Repeated setup.** Trace the callers and the cost of setup. For frequent or expensive construction, check whether callers can reuse the whole configuration or its stable parts. Verify when inputs change, who releases obsolete resources, and whether caching adds meaningful memory or invalidation costs. A route search can reuse a graph until the map changes. Keep local construction when reuse offers little benefit or the inputs change each time.
+- **Overlapping requests.** Check whether requests can overlap and share results, errors, or loading state. Follow success, failure, cancellation, and late completion. Raise a finding when an older request can overwrite the current result or clear its loading state. Keep simple state when callers serialize requests or cancellation reliably prevents stale updates.
 - **Tests.** Check observable behavior and meaningful failure paths. Flag assertions tied to an internal helper, call count, or exact call order when an equivalent implementation would fail them. Keep interaction assertions when count or order is part of the contract, such as one payment submission per order.
 
 ## Worked example

@@ -26,6 +26,7 @@
   },
   "rules": {
     "maintainable/single-use-helper": "error",
+    "maintainable/object-spread-newline": "off",
     "max-depth": [
       "warn",
       2

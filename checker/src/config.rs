@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
+pub const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
 
 pub const RULES: &[&str] = &[
     "prefer-const",
@@ -22,6 +23,7 @@ pub const RULES: &[&str] = &[
     "complexity",
     "max-lines",
     SINGLE_USE_HELPER,
+    OBJECT_SPREAD_NEWLINE,
 ];
 
 pub fn validate_rule_filter(rules: &[String]) -> Result<()> {

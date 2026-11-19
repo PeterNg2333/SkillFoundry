@@ -1,14 +1,14 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
-    ast::{Expression, ImportDeclarationSpecifier, VariableDeclarationKind},
+    ast::{Expression, ImportDeclarationSpecifier, ObjectPropertyKind, VariableDeclarationKind},
 };
 use oxc_parser::Parser;
 use oxc_semantic::{AstNode, Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    config::{Policy, SINGLE_USE_HELPER},
+    config::{OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
     report::Report,
 };
 
@@ -141,11 +141,40 @@ pub fn check(
         .iter()
         .any(|node| matches!(node.kind(), AstKind::Decorator(_)));
     let single_use_severity = policy.severity(SINGLE_USE_HELPER);
+    let object_spread_severity = policy.severity(OBJECT_SPREAD_NEWLINE);
     for node in semantic.nodes().iter() {
         if let Some(severity) = single_use_severity {
             check_single_use_helper(node, &semantic, file, source, severity, report);
         }
         match node.kind() {
+            AstKind::ObjectExpression(object) if object.properties.len() >= 4 => {
+                let Some(severity) = object_spread_severity else {
+                    continue;
+                };
+                let spreads = object
+                    .properties
+                    .iter()
+                    .filter(|property| matches!(property, ObjectPropertyKind::SpreadProperty(_)))
+                    .count();
+                if spreads == 0 || object.properties.len() - spreads < 3 {
+                    continue;
+                }
+                let shares_line = object.properties.windows(2).any(|pair| {
+                    let previous_end = pair[0].span().end as usize;
+                    let next_start = pair[1].span().start as usize;
+                    !source[previous_end..next_start].contains(['\r', '\n', '\u{2028}', '\u{2029}'])
+                });
+                if shares_line {
+                    report.finding(
+                        file,
+                        source,
+                        object.span.start as usize,
+                        severity,
+                        OBJECT_SPREAD_NEWLINE,
+                        "Put each entry on its own line in an object with a spread and at least three other properties.",
+                    );
+                }
+            }
             AstKind::VariableDeclaration(declaration)
                 if declaration.kind == VariableDeclarationKind::Let =>
             {
