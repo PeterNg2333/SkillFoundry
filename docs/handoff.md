@@ -1,15 +1,17 @@
 # Current handoff
 
-Updated 2026-11-19.
+Updated 2026-11-21.
 
 ## Status
 
 - The standalone checker is at 0.3.0. `/check` resolves paths and exact native rule IDs. The current JS/TS rules cover syntax, selected style and import policy, nesting, complexity, file length, and private helpers with one direct caller. The CLI reports unsupported checks explicitly and supports audited, statement-scoped `@bypass` comments.
 - `/add-smell` records a deterministic check or contextual rule from examples. `/review-smells` is an explicit read-only skill prompt that examines callers, boundaries, and tests. Native findings and CI exit codes come from `/check`. The [worked example](../skills/maintainable-code/references/smells.md) covers naming, feature ownership, early returns, a Zod input boundary, FP/OOP, and behavior-focused tests.
-- The 0.3.1-smells.2 Windows preview was built from a working tree with source changes. The version for a formal release is pending.
+- The 0.3.1-smells.7 Windows preview is installed in the user-level Codex skills directory. It adds three opt-in UI rules for long JSX class names, Playwright style assertions, and complex mapped buttons. The formal release is pending.
 
 ## Verified evidence
 
+- For 0.3.1-smells.7, `sh scripts/build.sh` passed 24 CLI tests, rustfmt, Clippy and the Windows release build. All seven distribution tests passed. The before-and-after IMDF pilot found each accepted smell in its earlier example and zero findings in the revised examples.
+- The installed receipt matches the 0.3.1-smells.7 ZIP hash. Its executable exposes all three UI rules and the previous fallback-order rule with an empty PATH. Older ZIP permissions blocked the shared checksum index refresh. The new ZIP passed independent integrity and payload verification.
 - `sh scripts/build.sh` passed rustfmt, all 18 CLI tests, Clippy, and the Windows release build. All seven distribution tests and the skill validator passed. The preview passed isolated installation, ZIP hash verification, and a standalone run with an empty PATH. Refreshing `dist/SHA256SUMS` was blocked by read permissions on the existing 0.3.0 ZIP.
 - The worked example passed strict TypeScript and runtime Zod checks. The native scanner reported one single-use lookup helper before the rewrite and zero after it. The examples verified normal totals, zero totals, missing orders, and rejection of malformed input at the revised boundary.
 - At Playback revision `caaf55a`, the export fix reduced the `app-temp/web` single-use scan from 34 to 25 findings across 106 TypeScript files. The focused recording scan returned 10 findings across eight files. Manual source review suggested inlining two, retaining seven, and testing the `audioContext` failure path. `speaking` and `backoff` are examples of a local predicate and a helper that owns cleanup.

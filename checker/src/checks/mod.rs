@@ -4,6 +4,7 @@ mod javascript;
 mod manifests;
 mod metrics;
 mod semantics;
+mod ui;
 
 use crate::{
     config::{RULES, Resolved, validate_rule_filter},

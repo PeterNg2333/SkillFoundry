@@ -146,6 +146,7 @@ pub fn check(
         return true;
     }
     let semantic = built.semantic;
+    super::ui::check(&semantic, file, source, policy, report);
     let scope = semantic.scoping();
     // Decorator metadata may require a runtime value for a type annotation.
     let has_decorators = semantic

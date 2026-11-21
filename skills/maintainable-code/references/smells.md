@@ -47,6 +47,26 @@ An `if` condition that joins four or more terms with `&&` or `||` can hide the o
 
 For example, split `if (strict && !building && !level && !kiosk)` into an outer `if (strict)` and an inner `if (!building && !level && !kiosk)`. Preserve short-circuit behavior when separating conditions that call functions.
 
+### `maintainable/long-jsx-class-name` · Deterministic
+
+Group long class lists so layout, focus, and selected styles are easy to find. The checker reports one finding per JSX `className` attribute when a static string or template fragment contains 20 or more whitespace-separated classes on one source line. It examines conditional branches and string arguments to `cn`, `clsx`, `classnames`, and `classNames`.
+
+A single string with 20 classes raises a finding. The same classes in two strings on separate lines of `cn()` pass. Short lists and dynamic values such as `className={buttonClass}` pass. The warning concerns the source layout, so a component can keep its current styling mechanism.
+
+### `maintainable/playwright-style-assertion` · Deterministic
+
+Assert user-visible behavior in Playwright flow tests. The checker inspects JS/TS `.spec.*` and `.test.*` files that import `@playwright/test`. It reports `toHaveCSS()` and reads of `getComputedStyle()`, `boundingBox()`, `scrollWidth`, or `scrollHeight` used in `expect()` or `expect.poll()`. It follows one local variable binding that stores a measurement.
+
+For example, a floor navigation test should assert the active floor and pressed route step. An exact transition time can go in a dedicated visual test. Files under a `visual` directory and files named `*.visual.spec.*` or `*.visual.test.*` pass. Coordinates used only for an interaction, accessibility attributes and ordinary visibility matchers pass. Use a scoped `@bypass` with a reason when geometry is a requirement of a particular flow.
+
+### `maintainable/complex-mapped-button` · Deterministic
+
+Keep a mapped list focused on the data and its action. The checker reports a native `<button>` in the callback passed directly to `.map()` when it has an `onClick` expression, uses a conditional, interpolated template or call for `className`, and has either an expression for an ARIA state or a direct JSX element or fragment child.
+
+A route-hint button with conditional classes, `aria-pressed` and separate number and label spans raises a finding. A mapped `<FloorHintButton label={label} pressed={active} onClick={open} />` passes. A simple inline text button with a fixed class also passes. Use the feature's own props when it has distinct behavior or styling.
+
+These three rules default to off. Set any of their values to `"warn"` under `rules` in the project's `checkignore.json`.
+
 ### `explicit-feature-flow` · Contextual review
 
 Make ownership, names, decisions and public behavior easy to follow. Report a finding when a caller or likely change exposes a specific cost.
