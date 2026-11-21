@@ -1,14 +1,17 @@
 use oxc_allocator::Allocator;
 use oxc_ast::{
     AstKind,
-    ast::{Expression, ImportDeclarationSpecifier, ObjectPropertyKind, VariableDeclarationKind},
+    ast::{
+        AssignmentExpression, AssignmentTarget, Expression, ImportDeclarationSpecifier,
+        ObjectPropertyKind, Statement, VariableDeclarationKind,
+    },
 };
 use oxc_parser::Parser;
 use oxc_semantic::{AstNode, Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    config::{LONG_CONDITION, OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
+    config::{FALLBACK_ORDER, LONG_CONDITION, OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
     report::Report,
 };
 
@@ -21,6 +24,115 @@ fn condition_terms(expression: &Expression<'_>) -> usize {
             condition_terms(&unary.argument)
         }
         _ => 1,
+    }
+}
+
+fn single_assignment<'s, 'a>(statement: &'s Statement<'a>) -> Option<&'s AssignmentExpression<'a>> {
+    let statement = if let Statement::BlockStatement(block) = statement {
+        let [only] = block.body.as_slice() else {
+            return None;
+        };
+        only
+    } else {
+        statement
+    };
+    let Statement::ExpressionStatement(statement) = statement else {
+        return None;
+    };
+    let Expression::AssignmentExpression(assignment) = statement.expression.without_parentheses()
+    else {
+        return None;
+    };
+    assignment.operator.is_assign().then_some(assignment)
+}
+
+fn null_guard_target<'s>(statement: &'s Statement<'_>) -> Option<&'s str> {
+    let Statement::IfStatement(statement) = statement else {
+        return None;
+    };
+    if statement.alternate.is_some() {
+        return None;
+    }
+    let Expression::LogicalExpression(condition) = statement.test.without_parentheses() else {
+        return None;
+    };
+    if !condition.operator.is_and() {
+        return None;
+    }
+    let mut guard = condition.left.without_parentheses();
+    while let Expression::LogicalExpression(condition) = guard
+        && condition.operator.is_and()
+    {
+        guard = condition.left.without_parentheses();
+    }
+    let Expression::BinaryExpression(guard) = guard else {
+        return None;
+    };
+    if guard.operator.as_str() != "==="
+        || !matches!(
+            guard.right.without_parentheses(),
+            Expression::NullLiteral(_)
+        )
+    {
+        return None;
+    }
+    let Expression::Identifier(read) = guard.left.without_parentheses() else {
+        return None;
+    };
+    let AssignmentTarget::AssignmentTargetIdentifier(write) =
+        &single_assignment(&statement.consequent)?.left
+    else {
+        return None;
+    };
+    (read.name == write.name).then_some(write.name.as_str())
+}
+
+fn check_fallback_order(
+    kind: AstKind<'_>,
+    file: &str,
+    source: &str,
+    severity: &str,
+    report: &mut Report,
+) {
+    let statements = match kind {
+        AstKind::IfStatement(statement) => {
+            if let Some(assignment) = statement.alternate.as_ref().and_then(single_assignment)
+                && matches!(
+                    assignment.right.without_parentheses(),
+                    Expression::ConditionalExpression(_)
+                )
+            {
+                report.finding(
+                    file,
+                    source,
+                    statement.span.start as usize,
+                    severity,
+                    FALLBACK_ORDER,
+                    "Make the fallback decision explicit instead of assigning a ternary in the else branch.",
+                );
+            }
+            return;
+        }
+        AstKind::Program(program) => program.body.as_slice(),
+        AstKind::FunctionBody(body) => body.statements.as_slice(),
+        AstKind::BlockStatement(block) => block.body.as_slice(),
+        AstKind::SwitchCase(case) => case.consequent.as_slice(),
+        _ => return,
+    };
+    for pair in statements.windows(2) {
+        let Some(target) = null_guard_target(&pair[1]) else {
+            continue;
+        };
+        if null_guard_target(&pair[0]) == Some(target) {
+            report.finding(
+                file,
+                source,
+                pair[1].span().start as usize,
+                severity,
+                FALLBACK_ORDER,
+                format!("Choose the fallback for {target} in priority order instead of repeatedly checking and assigning it."),
+            );
+        }
     }
 }
 
@@ -156,9 +268,13 @@ pub fn check(
     let single_use_severity = policy.severity(SINGLE_USE_HELPER);
     let object_spread_severity = policy.severity(OBJECT_SPREAD_NEWLINE);
     let long_condition_severity = policy.severity(LONG_CONDITION);
+    let fallback_order_severity = policy.severity(FALLBACK_ORDER);
     for node in semantic.nodes().iter() {
         if let Some(severity) = single_use_severity {
             check_single_use_helper(node, &semantic, file, source, severity, report);
+        }
+        if let Some(severity) = fallback_order_severity {
+            check_fallback_order(node.kind(), file, source, severity, report);
         }
         match node.kind() {
             AstKind::IfStatement(statement) => {

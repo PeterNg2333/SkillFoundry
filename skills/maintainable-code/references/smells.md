@@ -47,6 +47,23 @@ An `if` condition that joins four or more terms with `&&` or `||` can hide the o
 
 For example, split `if (strict && !building && !level && !kiosk)` into an outer `if (strict)` and an inner `if (!building && !level && !kiosk)`. Preserve short-circuit behavior when separating conditions that call functions.
 
+### `maintainable/fallback-order` · Deterministic
+
+Make fallback precedence readable from top to bottom. The JavaScript and TypeScript checker warns on two shapes:
+
+- An `else` branch whose only statement assigns a ternary, such as `else mode = mobile ? 'mobile' : 'desktop'`.
+- Consecutive `if` statements in the same statement list that start with the same variable's `=== null` test followed by `&&` and each only assign to that variable. The finding points to the repeated guard.
+
+A branch may use braces. A standalone ternary, a guard for a different variable, or independent state updates stay within the rule's limits. For an ordered choice, `input.mode ?? inferMode()` can retain an explicit value and defer inference. Within `inferMode`, early returns can express each choice in priority order. Preserve short-circuit behavior, particularly when a condition calls a function.
+
+The rule defaults to off. Set `"maintainable/fallback-order": "warn"` in the project's `checkignore.json` to enable it.
+
+```sh
+maintainable-check check --root . --rules maintainable/fallback-order --json -- src
+```
+
+Use the affected source path in place of `src`. The rule filter selects the check and uses the project's configured severity. Confirm that the report includes the intended files and that the expected warning appears in a known example before relying on a clean result.
+
 ### `maintainable/long-jsx-class-name` · Deterministic
 
 Group long class lists so layout, focus, and selected styles are easy to find. The checker reports one finding per JSX `className` attribute when a static string or template fragment contains 20 or more whitespace-separated classes on one source line. It examines conditional branches and string arguments to `cn`, `clsx`, `classnames`, and `classNames`.

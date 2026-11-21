@@ -6,6 +6,60 @@ use support::{Project, diagnostic};
 const SINGLE_USE: &str = "maintainable/single-use-helper";
 const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
 const LONG_CONDITION: &str = "maintainable/long-condition";
+const FALLBACK_ORDER: &str = "maintainable/fallback-order";
+
+#[test]
+fn fallback_order_flags_else_assignments_and_repeated_null_guards() {
+    let else_assignment = (
+        "else.js",
+        "let mode = null;\nif (iframe) mode = 'kiosk';\nelse mode = mobile ? 'mobile' : 'desktop';",
+    );
+    let args = ["check", "--json", "--rules", FALLBACK_ORDER];
+    let default = Project::new(&[else_assignment]).success(&args, true);
+    assert!(diagnostic(&default, FALLBACK_ORDER).is_none());
+
+    let enabled = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{"rules":{"maintainable/fallback-order":"warn"}}"#,
+        ),
+        else_assignment,
+        (
+            "fallback.ts",
+            "const resolve = () => {\n\
+             let mode = input.mode;\n\
+             if (mode === null && iframe) mode = 'kiosk';\n\
+             if ((mode === null && phone) && supported) { mode = 'mobile'; }\n\
+             return mode ?? 'desktop';\n};",
+        ),
+        (
+            "allowed.tsx",
+            "const label = mobile ? 'mobile' : 'desktop';\n\
+             if (active) show(); else show(mobile ? <Mobile /> : <Desktop />);\n\
+             if (enabled) open(); else { prepare(); mode = mobile ? 'mobile' : 'desktop'; }\n\
+             if (mode === null && iframe) mode = 'kiosk';\n\
+             if (layout === null && mobile) layout = 'compact';\n\
+             if (layout === null && desktop) width = 'wide';\n\
+             if (mode === null && iframe) mode = 'kiosk';\n\
+             reset();\n\
+             if (mode === null && mobile) mode = 'mobile';\n\
+             if (enabled) count += 1;\n\
+             if (mobile) count += 1;",
+        ),
+    ])
+    .success(&args, true);
+
+    assert_eq!(enabled["summary"]["warnings"], 2);
+    assert_eq!(enabled["summary"]["errors"], 0);
+    let findings = enabled["diagnostics"].as_array().unwrap();
+    assert_eq!(findings.len(), 2);
+    for (finding, (file, line)) in findings.iter().zip([("else.js", 2), ("fallback.ts", 4)]) {
+        assert_eq!(finding["rule"], FALLBACK_ORDER);
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["file"], file);
+        assert_eq!(finding["line"], line);
+    }
+}
 
 #[test]
 fn long_if_conditions_are_an_opt_in_warning() {

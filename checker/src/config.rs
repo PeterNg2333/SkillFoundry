@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
 pub const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
 pub const LONG_CONDITION: &str = "maintainable/long-condition";
+pub const FALLBACK_ORDER: &str = "maintainable/fallback-order";
 pub const LONG_JSX_CLASS_NAME: &str = "maintainable/long-jsx-class-name";
 pub const PLAYWRIGHT_STYLE_ASSERTION: &str = "maintainable/playwright-style-assertion";
 pub const COMPLEX_MAPPED_BUTTON: &str = "maintainable/complex-mapped-button";
@@ -35,6 +36,7 @@ pub const RULES: &[&str] = &[
     SINGLE_USE_HELPER,
     OBJECT_SPREAD_NEWLINE,
     LONG_CONDITION,
+    FALLBACK_ORDER,
     LONG_JSX_CLASS_NAME,
     PLAYWRIGHT_STYLE_ASSERTION,
     COMPLEX_MAPPED_BUTTON,

@@ -30,6 +30,7 @@
     "maintainable/single-use-helper": "error",
     "maintainable/object-spread-newline": "off",
     "maintainable/long-condition": "off",
+    "maintainable/fallback-order": "off",
     "maintainable/long-jsx-class-name": "off",
     "maintainable/playwright-style-assertion": "off",
     "maintainable/complex-mapped-button": "off",
