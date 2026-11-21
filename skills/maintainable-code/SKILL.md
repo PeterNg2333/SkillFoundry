@@ -1,11 +1,19 @@
 ---
 name: maintainable-code
-description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, handoffs, scoped static checks, or recording and reviewing code smells."
+description: "Plan and deliver maintainability-focused changes in small reviewable phases. Use for architecture, implementation, refactoring, verification and test design, handoffs, scoped static checks, or recording and reviewing code smells."
 ---
 
 # Maintainable Code
 
 Make each agreed phase easy to understand, verify and continue. Apply the user's code organization preferences while respecting repository and framework requirements.
+
+## Quality philosophy
+
+Use **20% coding, 70% checking, and 10% human review** as a default allocation of effort. Scale the depth to the change and its risk.
+
+- **Coding.** Implement the requested change, including ordinary feature work, fixes, and refactoring.
+- **Checking.** Start with deterministic checks. Verify readability, correctness, performance, and business logic wherever the change affects them. Use the [verification guide](references/verification.md#what-to-check) to choose evidence.
+- **Human review.** Present the key decisions, evidence, and remaining uncertainty. Focus the review on product intent, tradeoffs, and material risk.
 
 ## Shortcuts
 
@@ -51,9 +59,11 @@ For TypeScript/JavaScript code or check configuration, read [typescript.md](refe
 
 ## Verify the result
 
-Run the existing checks relevant to the changed behavior and inspect the actual diff. Tests should exercise public outcomes, meaningful edge cases and affected failure paths. Match verification to the changed boundary, including the actual entry point when integration behavior changes.
+Use the [verification workflow](references/verification.md#run-and-report-checks) when implementing a code change. Choose applicable checks from the project's scripts or CI configuration, run them on the affected scope, and inspect the diff. For behavior changes, verify an observable outcome through the relevant entry point.
 
-For code changes, read [checks.md](references/checks.md) and choose the supplied native checks for the affected scope. The Rust executable owns selection and all parsing, including JS/TS AST rules. Apply `checkignore.json`, scoped `.gitignore`, root `.dockerignore` and extension routing before analysis. Report actual coverage, unsupported checks, skipped reasons, metrics and remaining warnings. Reusable implementation and fixtures belong to `checker/` in SkillFoundry; project settings belong to the target repository. Explain tooling cost, false positives or custom-rule maintenance when a check may be excessive. Review exclusion and rule changes as policy changes.
+Include each verification command or manual action, its scope, and its actual result in the handoff. If a relevant check could not run, name the blocker and the behavior or policy left unverified.
+
+For SkillFoundry checks, use [checks.md](references/checks.md) to resolve the applicable rule IDs and paths. The checker applies `checkignore.json`, scoped `.gitignore`, root `.dockerignore`, and extension routing. Check the report for coverage, unsupported checks, skipped paths, and warnings. Reusable rules and fixtures belong to `checker/`. The target project owns its policy. Explain changes to exclusions, severity, thresholds, or bypasses.
 
 Before handoff, trace one normal and one failure path. Locate their state owner and side effects. Consider one likely next change and where its edits would concentrate. Simplify flows that a maintainer would struggle to follow.
 
