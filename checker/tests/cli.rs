@@ -5,6 +5,46 @@ use support::{Project, diagnostic};
 
 const SINGLE_USE: &str = "maintainable/single-use-helper";
 const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
+const LONG_CONDITION: &str = "maintainable/long-condition";
+
+#[test]
+fn long_if_conditions_are_an_opt_in_warning() {
+    let flat = (
+        "flat.ts",
+        "if (strict\n    && building === null\n    && level === null\n    && kiosk === null) notFound();",
+    );
+    let args = ["check", "--json", "--rules", LONG_CONDITION];
+    let default = Project::new(&[flat]).success(&args, true);
+    assert!(diagnostic(&default, LONG_CONDITION).is_none());
+
+    let enabled = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{"rules":{"maintainable/long-condition":"warn"}}"#,
+        ),
+        flat,
+        ("negated.js", "if (!(a && (b || c) && d)) returnValue();"),
+        (
+            "short.tsx",
+            "if (strict) { if (!building && !level && !kiosk) notFound(); }\n\
+             if (a && available(b && c && d) && e) open();\n\
+             if ((a ?? b) && (c ?? d) && e) open();\n\
+             const view = a && b && c && d ? <main /> : null;",
+        ),
+    ])
+    .success(&args, true);
+
+    assert_eq!(enabled["summary"]["warnings"], 2);
+    assert_eq!(enabled["summary"]["errors"], 0);
+    let findings = enabled["diagnostics"].as_array().unwrap();
+    assert_eq!(findings.len(), 2);
+    for (finding, file) in findings.iter().zip(["flat.ts", "negated.js"]) {
+        assert_eq!(finding["rule"], LONG_CONDITION);
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["file"], file);
+        assert_eq!(finding["line"], 1);
+    }
+}
 
 #[test]
 fn object_spread_newline_is_an_opt_in_warning() {

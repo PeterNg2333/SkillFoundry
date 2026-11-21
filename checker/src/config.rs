@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
 pub const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
+pub const LONG_CONDITION: &str = "maintainable/long-condition";
 
 pub const RULES: &[&str] = &[
     "prefer-const",
@@ -24,6 +25,7 @@ pub const RULES: &[&str] = &[
     "max-lines",
     SINGLE_USE_HELPER,
     OBJECT_SPREAD_NEWLINE,
+    LONG_CONDITION,
 ];
 
 pub fn validate_rule_filter(rules: &[String]) -> Result<()> {

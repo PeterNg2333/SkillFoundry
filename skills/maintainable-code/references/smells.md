@@ -41,6 +41,12 @@ Separate entries with line breaks in a JavaScript or TypeScript object literal t
 
 For example, expand `{ ...data, id, source, target }` so each entry has its own line. A compact update such as `{ ...data, id }` stays within the rule's limit.
 
+### `maintainable/long-condition` · Deterministic
+
+An `if` condition that joins four or more terms with `&&` or `||` can hide the order of decisions. The JavaScript and TypeScript checker reports one finding per `if`. Parentheses, negation and line breaks do not change the count. A function call, comparison or `??` expression counts as one term. The rule defaults to off. Set `"maintainable/long-condition": "warn"` in the project's `checkignore.json` to enable it.
+
+For example, split `if (strict && !building && !level && !kiosk)` into an outer `if (strict)` and an inner `if (!building && !level && !kiosk)`. Preserve short-circuit behavior when separating conditions that call functions.
+
 ### `explicit-feature-flow` · Contextual review
 
 Make ownership, names, decisions and public behavior easy to follow. Report a finding when a caller or likely change exposes a specific cost.

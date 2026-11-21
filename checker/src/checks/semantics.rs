@@ -8,9 +8,21 @@ use oxc_semantic::{AstNode, Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    config::{OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
+    config::{LONG_CONDITION, OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
     report::Report,
 };
+
+fn condition_terms(expression: &Expression<'_>) -> usize {
+    match expression.without_parentheses() {
+        Expression::LogicalExpression(logical) if !logical.operator.is_coalesce() => {
+            condition_terms(&logical.left) + condition_terms(&logical.right)
+        }
+        Expression::UnaryExpression(unary) if unary.operator.is_not() => {
+            condition_terms(&unary.argument)
+        }
+        _ => 1,
+    }
+}
 
 fn check_single_use_helper(
     node: &AstNode<'_>,
@@ -142,11 +154,28 @@ pub fn check(
         .any(|node| matches!(node.kind(), AstKind::Decorator(_)));
     let single_use_severity = policy.severity(SINGLE_USE_HELPER);
     let object_spread_severity = policy.severity(OBJECT_SPREAD_NEWLINE);
+    let long_condition_severity = policy.severity(LONG_CONDITION);
     for node in semantic.nodes().iter() {
         if let Some(severity) = single_use_severity {
             check_single_use_helper(node, &semantic, file, source, severity, report);
         }
         match node.kind() {
+            AstKind::IfStatement(statement) => {
+                let Some(severity) = long_condition_severity else {
+                    continue;
+                };
+                let terms = condition_terms(&statement.test);
+                if terms >= 4 {
+                    report.finding(
+                        file,
+                        source,
+                        statement.span.start as usize,
+                        severity,
+                        LONG_CONDITION,
+                        format!("Split this if condition into smaller decisions. It combines {terms} terms."),
+                    );
+                }
+            }
             AstKind::ObjectExpression(object) if object.properties.len() >= 4 => {
                 let Some(severity) = object_spread_severity else {
                     continue;
