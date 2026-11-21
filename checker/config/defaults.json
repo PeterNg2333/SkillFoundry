@@ -20,6 +20,8 @@
     ".mts": "typescript",
     ".cts": "typescript",
     ".json": "json",
+    ".py": "python",
+    ".pyi": "python",
     ".go": "go",
     ".mod": "gomod",
     ".toml": "toml"
@@ -48,5 +50,10 @@
       }
     ]
   },
-  "overrides": []
+  "overrides": [],
+  "externalChecks": [],
+  "pythonRules": ["E4", "E7", "E9", "F"],
+  "duplication": {
+    "severity": "warn"
+  }
 }

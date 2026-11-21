@@ -68,6 +68,9 @@ fn run() -> Result<i32> {
                     &["javascript", "typescript"]
                 };
                 checks.extend(defaults.iter().map(|name| (*name).to_owned()));
+                if rules.is_empty() {
+                    checks.extend(settings.settings.external_checks.iter().cloned());
+                }
             }
             (paths, list, checks, rules)
         }
@@ -77,6 +80,7 @@ fn run() -> Result<i32> {
     let mut result = report::Report::new(root.display().to_string(), selected, &settings, list);
     if !list {
         checks::run(&root, &settings, &names, &rules, &mut result)?;
+        result.apply_project_bypasses(&settings.settings.bypasses)?;
     }
     result.rule_filter = rules;
     result.finish();
@@ -103,15 +107,14 @@ fn run() -> Result<i32> {
         }
         for bypass in &result.bypasses {
             let finding = &bypass.finding;
+            let declared_at = match bypass.directive_line {
+                Some(line) => format!("at line {line}"),
+                None => "in project configuration".to_owned(),
+            };
             writeln!(
                 output,
-                "{}:{}:{} bypassed {} at line {}: {}",
-                finding.file,
-                finding.line,
-                finding.column,
-                finding.rule,
-                bypass.directive_line,
-                bypass.reason
+                "{}:{}:{} bypassed {} {declared_at}: {}",
+                finding.file, finding.line, finding.column, finding.rule, bypass.reason
             )?;
         }
         for directive in &result.directives {
@@ -131,12 +134,13 @@ fn run() -> Result<i32> {
         for check in result
             .checks
             .iter()
-            .filter(|check| check.status == "unsupported")
+            .filter(|check| matches!(check.status, "unsupported" | "partial"))
         {
             writeln!(
                 output,
-                "{} unsupported: {}",
+                "{} {}: {}",
                 check.id,
+                check.status,
                 check.reason.as_deref().unwrap_or("")
             )?;
         }
@@ -151,7 +155,15 @@ fn run() -> Result<i32> {
             result.summary.warnings
         )?;
     }
-    Ok(i32::from(result.summary.errors > 0))
+    if result
+        .checks
+        .iter()
+        .any(|check| names.contains(&check.id) && matches!(check.status, "unsupported" | "partial"))
+    {
+        Ok(2)
+    } else {
+        Ok(i32::from(result.summary.errors > 0))
+    }
 }
 
 fn main() {

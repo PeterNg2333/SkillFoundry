@@ -10,6 +10,7 @@ Make each agreed phase easy to understand, verify and continue. Apply the user's
 ## Shortcuts
 
 - `/help` shows the shortcut syntax, scope examples, and supported checks. Read [checks.md](references/checks.md) and [smells.md](references/smells.md) and answer without scanning the project.
+- `/init [auto|questionnaire]` sets up project policy in `checkignore.json`. Use the [mc-init workflow](../mc-init/SKILL.md) for project inspection, policy choices, and verification.
 - `/check [description]` runs static checks. Read [checks.md](references/checks.md) to translate the description into project-relative paths, check IDs and rule IDs. With no description, run the project's default native check scope.
 - `/add-smell [example or description]` records or updates a reusable smell in the source skill. Read [smells.md](references/smells.md) to choose a deterministic check or contextual review rule and record the evidence.
 - `/review-smells [scope]` explicitly requests read-only contextual review. Apply the criteria in [smells.md](references/smells.md) to the named files or feature.
@@ -23,6 +24,8 @@ The source of truth is the `SkillFoundry` repository: `checker/` owns the Rust p
 ## Establish the current task
 
 Read the repository entry instructions, architecture source and current handoff when present. Inspect the working tree, affected code and actual callers before proposing changes. Resolve existing authorization and phase status from the session and repository workflow.
+
+Before editing a target project, read its `checkignore.json` when present. Follow the declared `styleNotes`, enforce the applicable `rules`, and check the scope and reasons of existing `bypasses`. Explain changes to project policy.
 
 Scale the process to the task. A focused fix can use a short plan and the existing handoff. Planning and research requests produce their requested artifacts. Add workflow documents or tooling when requested or when they are a concrete dependency of the authorized work.
 

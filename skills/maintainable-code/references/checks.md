@@ -1,10 +1,12 @@
 # Native checker
 
-The installed skill supplies one Rust executable at `bin/maintainable-check.exe` on Windows or `bin/maintainable-check` on Linux/macOS. Defaults and AST rules are embedded. Running checks requires no Node, Go toolchain or package manager. Source lives in SkillFoundry's `checker/`.
+The installed skill supplies one Rust executable at `bin/maintainable-check.exe` on Windows or `bin/maintainable-check` on Linux/macOS. Defaults and AST rules are embedded. Native checks require only the operating system. Opt-in tool checks use executables on PATH. Source lives in SkillFoundry's `checker/`.
 
 ## Skill shortcuts
 
 Use `/help` to see the syntax and supported scope. These are skill prompt shortcuts. In a client with its own slash commands, invoke the skill explicitly, for example `$maintainable-code /check single-use helpers in src/routes`.
+
+Use `$mc-init` or `$maintainable-code /init` to inspect the project and create its policy. Pass `questionnaire` to decide language coverage, style rules, and exclusions one topic at a time. The agent writes and verifies the configuration in either mode.
 
 | Prompt | Checker arguments after `check --root <project> --json` |
 |---|---|
@@ -12,6 +14,9 @@ Use `/help` to see the syntax and supported scope. These are skill prompt shortc
 | `/check single-use helpers in src/routes` | `--rules maintainable/single-use-helper -- src/routes` |
 | `/check TS prefer-const in src/orders.ts and src/users.ts` | `--checks typescript --rules prefer-const -- src/orders.ts src/users.ts` |
 | `/check package dependency counts` | `--checks dependencies` |
+| `/check dependency boundaries` | `--checks dependency-boundaries` |
+| `/check duplicate code in src` | `--checks duplication -- src` |
+| `/check Python lint and Go formatting` | `--checks python,go-format` |
 | `/check pending AI work in src/routes` | `--checks directives -- src/routes` |
 
 Use `/add-smell` to record a new smell and `/review-smells` to request contextual review. See [smell rules and examples](smells.md) for those skill prompts.
@@ -20,7 +25,7 @@ Resolve explicit paths relative to the target root. For descriptions such as “
 
 Report the resolved file and rule scope, findings with locations, and relevant skipped paths or bypasses. Language checks use `--checks`; `--rules` selects exact native JS/TS policy IDs and respects project severity and overrides. The checker still validates syntax before examining rules. A rule such as `no-restricted-syntax` can cover several patterns, so identify that shared scope when the request names one of them.
 
-For broader checks on generated code, use the target project's configured tools. Examples include ESLint `no-useless-catch` and `@typescript-eslint/ban-ts-comment`, Ruff `S110` for `except: pass` and `TRY203` for a redundant re-raise, and Knip or an existing duplicate-code scanner for module-level review. Apply only the requested and available rules. Python source currently requires project tooling.
+For broader checks on generated code, use the target project's configured tools. Examples include ESLint `no-useless-catch` and `@typescript-eslint/ban-ts-comment`, Ruff `S110` for `except: pass` and `TRY203` for a redundant re-raise, and Knip for module-level review. Apply only the requested and available rules.
 
 ## Commands and coverage
 
@@ -43,12 +48,16 @@ maintainable-check check --root . --checks go,comments src
 | `json`, `toml` | Strict syntax with source locations |
 | `dependencies` | Declared package groups and unique names in package.json/Cargo.toml; direct/indirect Go require declarations |
 | `go` | Embedded grammar syntax, imports and function/method counts |
+| `dependency-boundaries` | JS/TS dependency rules and cycles within selection via dependency-cruiser |
+| `duplication` | Duplicate token sequences in JS/TS, Python and Go via jscpd 5 |
+| `python` | Python lint and syntax via Ruff |
+| `go-format` | Go formatting via gofmt |
 | `comments` | AST comment groups and optional presence rule for JS/TS/Go |
 | `directives` | Source locations and descriptions for `@impl`, `@refactor` and `@check` in JS/TS comments |
 
-Default checks exclude `comments` and `directives`; `--checks` selects a subset. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and unsupported checks. `select` and `check --list` only list selection.
+Plain `check` runs the native default groups and the project's `externalChecks`. Use `--checks` to choose exact groups. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and coverage. `select` and `check --list` only list selection.
 
-Go formatting is explicitly unsupported and does not silently pass. Keep project gofmt/type-check/formatter/typed-lint/behavior commands for their boundaries. Dependency metrics count declarations, not installed/transitive graphs, vulnerabilities or bundle size. Go manifest inspection is limited to require directives. Native style metrics do not claim arbitrary ESLint plugin compatibility.
+Keep project type checking, typed linting and behavior tests for their respective contracts. Manifest dependency metrics count declarations, and Go manifest inspection covers require directives. Native style metrics use the checker's definitions.
 
 ## Configuration and selection
 
@@ -59,10 +68,17 @@ Embedded defaults are owned by `checker/config/defaults.json` in the source chec
 - Root Docker ignore has context-root matching and negations that may restore descendants. Set `--root` to the intended context. Dockerfile-specific contexts and global user Git exclusions are outside current coverage.
 - Explicit paths use the same policy and must stay within root. JSON skip reasons include ignore provenance, disabled/unsupported extensions and symlinks.
 
-Extension types are `javascript`, `typescript`, `json`, `toml`, `go` and `gomod`. The longest matching suffix wins case-insensitively; `false` disables it. Unknown keys, rules, severities and unsupported options fail configuration validation.
+Extension types are `javascript`, `typescript`, `python`, `json`, `toml`, `go` and `gomod`. The longest matching suffix wins case-insensitively. Set a mapping to `false` to disable it. Unknown keys, rules, severities and unsupported options fail configuration validation.
 
 ```json
 {
+  "styleNotes": ["Use const arrows for ordinary functions and collect exports at the end."],
+  "rules": {"func-style": "error", "no-restricted-syntax": "error"},
+  "bypasses": [{
+    "files": ["src/framework/entry.ts"],
+    "rule": "func-style",
+    "reason": "The framework requires this function declaration."
+  }],
   "ignore": ["archive/**", "tests/generated/**"],
   "extensions": {".source": "typescript", ".generated.ts": false},
   "limits": {"directDependencies": 40, "importsPerFile": 15, "requireComments": false},
@@ -73,6 +89,32 @@ Extension types are `javascript`, `typescript`, `json`, `toml`, `go` and `gomod`
 Dependency/import limits are inactive until configured. Select `comments` to apply `requireComments`. Use `capabilities --json` for the native policy rule IDs, including `maintainable/single-use-helper`. IDs with legacy prefixes identify native policy rules in the standalone executable.
 
 Rules accept off/warn/error or numeric severities. Depth/complexity accept numeric thresholds; max-lines accepts a number or max/skipBlankLines/skipComments options. Func-style supports the supplied expression form. Use file-specific overrides for explicit file policy. Changes to exclusions, thresholds or severities are policy changes that need explanation.
+
+`styleNotes` gives agents the rationale for project conventions. The checker enforces `rules` and `overrides`. Each `bypasses` entry names a rule, positive root-relative file globs and a reason. A matching finding stays visible in the bypass report and the corresponding file is still checked. Inline JS/TS bypasses take precedence.
+
+## Optional tool checks
+
+```json
+{
+  "externalChecks": ["dependency-boundaries", "duplication", "python", "go-format"],
+  "dependencyBoundaries": {
+    "tsConfig": "tsconfig.json",
+    "forbidden": [
+      {"name": "ui-db", "from": "^src/ui/", "to": "^src/db/", "severity": "error"},
+      {"name": "no-cycles", "circular": true, "severity": "warn"}
+    ]
+  },
+  "duplication": {"minLines": 8, "minTokens": 80, "severity": "warn"},
+  "pythonRules": ["E4", "E7", "E9", "F", "I"]
+}
+```
+
+- Put dependency-cruiser with TypeScript available, jscpd 5, Ruff or gofmt on PATH for the checks you enable. PATH can point at the project's npm bin directory when running a trusted project. The checker does not install tools.
+- Boundary paths are regular expressions against project-relative paths. Provide `tsConfig` to resolve TypeScript aliases and include both endpoints in the selected scope. Use a whole-project run for whole-project cycle checks. The graph checks report at the source file.
+- jscpd compares selected files with their language peers. Duplicate findings point at the first matching block in path order and carry the other location. The documented example raises the clone thresholds above the tool defaults.
+- Ruff uses the declared selectors or its baseline `E4,E7,E9,F`. It applies SkillFoundry bypasses and runs with Ruff configuration discovery, caching and `# noqa` disabled.
+- Tool rule IDs are `dependency-cruiser/<name>`, `jscpd/duplicate`, `ruff/<code>` and `gofmt/format`. Put a finding's exact ID in the project bypass list.
+- A missing tool is `unsupported`, reduced coverage is `partial`, and a check with no matching files is `not-applicable`. A requested tool check with incomplete coverage returns exit code 2. Python files are selected by extension and counted as unchecked when no applicable check runs.
 
 ## Local exceptions and work directives
 
@@ -99,7 +141,7 @@ The `directives` check returns the tag, its text and its location in source orde
 
 ## Reports and contextual review
 
-JSON schema version 1 carries file/line/column, severity, rule, message and static provenance, plus metrics and check coverage. Exit codes are 0 without error findings, 1 with error findings, and 2 for configuration/operational failures. Warnings remain visible and require a disposition in the handoff.
+JSON schema version 1 carries file/line/column, severity, rule, message and provenance, plus metrics and check coverage. Exit codes are 0 without error findings, 1 with error findings, and 2 for configuration failures, operational failures or incomplete requested tool checks. Warnings remain visible and require a disposition in the handoff.
 
 An explicit `/review-smells` request applies the skill's contextual criteria to source. Use native findings as evidence when relevant. The CLI owns its static findings and exit code. See [contextual review](smells.md#review-a-scope) for evidence and reporting.
 

@@ -125,7 +125,7 @@ pub fn check(
                 bypass.used = true;
                 report.bypasses.push(Bypass {
                     finding,
-                    directive_line: source_location(input.text, bypass.offset).0,
+                    directive_line: Some(source_location(input.text, bypass.offset).0),
                     reason: bypass.reason.to_owned(),
                 });
             } else {

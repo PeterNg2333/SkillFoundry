@@ -4,10 +4,11 @@ mod javascript;
 mod manifests;
 mod metrics;
 mod semantics;
+mod tools;
 mod ui;
 
 use crate::{
-    config::{RULES, Resolved, validate_rule_filter},
+    config::{RULES, Resolved, TOOL_CHECKS, validate_rule_filter},
     report::{CheckStatus, Report},
 };
 use anyhow::{Context, Result, ensure};
@@ -45,17 +46,21 @@ const CATALOG: &[&str] = &[
 ];
 
 pub fn capabilities() -> Value {
-    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":CATALOG, "rules":RULES,
+    let checks: Vec<_> = CATALOG.iter().chain(TOOL_CHECKS).copied().collect();
+    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":checks, "rules":RULES,
+        "externalChecks":{"dependency-boundaries":"dependency-cruiser","duplication":"jscpd","python":"ruff","go-format":"gofmt"},
         "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "toml"],
-        "unsupported":[{"id":"go-format","reason":"The native Rust checker does not implement gofmt. Run the project's Go formatter separately."},
-        {"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
+        "unsupported":[{"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
         "modelReview":{"implemented":false,"default":"off"}})
 }
 
 pub fn validate(names: &[String]) -> Result<()> {
     let mut seen = BTreeSet::new();
     for name in names {
-        ensure!(CATALOG.contains(&name.as_str()), "unknown check {name}");
+        ensure!(
+            CATALOG.contains(&name.as_str()) || TOOL_CHECKS.contains(&name.as_str()),
+            "unknown check {name}"
+        );
         ensure!(seen.insert(name), "duplicate check {name}");
     }
     Ok(())
@@ -76,6 +81,7 @@ pub fn run(
         "--rules requires a javascript or typescript check"
     );
     let mut counts = BTreeMap::new();
+    let mut checked = BTreeSet::new();
     for (file, kind) in report
         .files
         .iter()
@@ -86,7 +92,7 @@ pub fn run(
             Path::new(&file).file_name().and_then(|name| name.to_str()),
             Some("package.json" | "go.mod" | "Cargo.toml")
         );
-        let main = selected(&kind) && kind != "gomod";
+        let main = selected(&kind) && kind != "gomod" && !TOOL_CHECKS.contains(&kind.as_str());
         let dependencies = manifest && selected("dependencies");
         let comments =
             matches!(kind.as_str(), "go" | "javascript" | "typescript") && selected("comments");
@@ -140,10 +146,13 @@ pub fn run(
                 *counts.entry("directives".to_owned()).or_insert(0) += 1;
             }
         }
-        report.summary.checked += 1;
+        checked.insert(file);
     }
-    report.summary.unchecked = report.files.len() - report.summary.checked;
     for name in names {
+        if TOOL_CHECKS.contains(&name.as_str()) {
+            tools::run(name, root, &settings.settings, report, &mut checked)?;
+            continue;
+        }
         let files = counts.get(name).copied().unwrap_or(0);
         report.checks.push(CheckStatus {
             id: name.clone(),
@@ -156,13 +165,16 @@ pub fn run(
             reason: None,
         });
     }
-    if selected("go") && report.files.iter().any(|file| file.kind == "go") {
+    if selected("go") && !selected("go-format") && report.files.iter().any(|file| file.kind == "go")
+    {
         report.checks.push(CheckStatus {
             id: "go-format".to_owned(),
             status: "unsupported",
             files: 0,
-            reason: Some("Run the project's gofmt check separately.".to_owned()),
+            reason: Some("Enable the go-format check to run gofmt.".to_owned()),
         });
     }
+    report.summary.checked = checked.len();
+    report.summary.unchecked = report.files.len() - report.summary.checked;
     Ok(())
 }

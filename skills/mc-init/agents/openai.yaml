@@ -1,0 +1,3 @@
+interface:
+  display_name: "SkillFoundry Init"
+  short_description: "Set up project style, languages, and ignores"

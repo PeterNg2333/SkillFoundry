@@ -15,6 +15,12 @@ pub const LONG_CONDITION: &str = "maintainable/long-condition";
 pub const LONG_JSX_CLASS_NAME: &str = "maintainable/long-jsx-class-name";
 pub const PLAYWRIGHT_STYLE_ASSERTION: &str = "maintainable/playwright-style-assertion";
 pub const COMPLEX_MAPPED_BUTTON: &str = "maintainable/complex-mapped-button";
+pub const TOOL_CHECKS: &[&str] = &[
+    "dependency-boundaries",
+    "duplication",
+    "python",
+    "go-format",
+];
 
 pub const RULES: &[&str] = &[
     "prefer-const",
@@ -58,13 +64,71 @@ pub struct Override {
     pub rules: BTreeMap<String, Value>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleBypass {
+    pub files: Vec<String>,
+    pub rule: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckSeverity {
+    Warn,
+    #[default]
+    Error,
+}
+
+impl CheckSeverity {
+    pub fn diagnostic(self) -> &'static str {
+        match self {
+            Self::Warn => "warning",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportBoundary {
+    pub name: String,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    #[serde(default)]
+    pub circular: bool,
+    #[serde(default)]
+    pub severity: CheckSeverity,
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct DependencyBoundaries {
+    pub ts_config: Option<String>,
+    pub forbidden: Vec<ImportBoundary>,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct Duplication {
+    pub min_tokens: Option<usize>,
+    pub min_lines: Option<usize>,
+    pub severity: Option<CheckSeverity>,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct Settings {
     pub ignore: Vec<String>,
     pub extensions: BTreeMap<String, Value>,
     pub rules: BTreeMap<String, Value>,
     pub overrides: Vec<Override>,
+    pub style_notes: Vec<String>,
+    pub bypasses: Vec<RuleBypass>,
+    pub external_checks: Vec<String>,
+    pub dependency_boundaries: DependencyBoundaries,
+    pub python_rules: Option<Vec<String>>,
+    pub duplication: Duplication,
     pub limits: Limits,
 }
 
@@ -135,6 +199,80 @@ fn validate_rules(rules: &BTreeMap<String, Value>) -> Result<()> {
     Ok(())
 }
 
+fn lint_code(code: &str) -> bool {
+    !code.is_empty()
+        && code.as_bytes()[0].is_ascii_uppercase()
+        && code
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+fn validate_external(settings: &Settings) -> Result<()> {
+    let mut checks = BTreeSet::new();
+    for check in &settings.external_checks {
+        ensure!(
+            TOOL_CHECKS.contains(&check.as_str()),
+            "unknown external check {check}"
+        );
+        ensure!(checks.insert(check), "duplicate external check {check}");
+    }
+    if let Some(rules) = &settings.python_rules {
+        ensure!(
+            !rules.is_empty() && rules.iter().all(|rule| lint_code(rule)),
+            "pythonRules requires Ruff rule codes or prefixes"
+        );
+    }
+    ensure!(
+        settings.duplication.min_lines != Some(0) && settings.duplication.min_tokens != Some(0),
+        "duplication thresholds must be positive"
+    );
+    let mut names = BTreeSet::new();
+    for rule in &settings.dependency_boundaries.forbidden {
+        ensure!(
+            !rule.name.is_empty()
+                && rule
+                    .name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')),
+            "invalid dependency boundary name {}",
+            rule.name
+        );
+        ensure!(
+            names.insert(&rule.name),
+            "duplicate dependency boundary {}",
+            rule.name
+        );
+        ensure!(
+            rule.to.is_some() || rule.circular,
+            "dependency boundary {} requires to or circular",
+            rule.name
+        );
+        ensure!(
+            rule.from.as_ref().is_none_or(|pattern| !pattern.is_empty())
+                && rule.to.as_ref().is_none_or(|pattern| !pattern.is_empty()),
+            "dependency boundary paths must be nonempty regex patterns"
+        );
+    }
+    Ok(())
+}
+
+fn bypass_rule(settings: &Settings, rule: &str) -> bool {
+    RULES.contains(&rule)
+        || matches!(rule, "jscpd/duplicate" | "gofmt/format")
+        || rule.strip_prefix("ruff/").is_some_and(|code| {
+            lint_code(code) && code.ends_with(|character: char| character.is_ascii_digit())
+        })
+        || rule
+            .strip_prefix("dependency-cruiser/")
+            .is_some_and(|name| {
+                settings
+                    .dependency_boundaries
+                    .forbidden
+                    .iter()
+                    .any(|rule| rule.name == name)
+            })
+}
+
 fn decode(source: &str, name: &str) -> Result<Settings> {
     let settings: Settings = serde_json::from_str(source.trim_start_matches('\u{feff}'))
         .with_context(|| format!("configuration {name}"))?;
@@ -155,12 +293,44 @@ fn decode(source: &str, name: &str) -> Result<Settings> {
                 kind == false
                     || matches!(
                         kind.as_str(),
-                        Some("javascript" | "typescript" | "json" | "go" | "gomod" | "toml")
+                        Some(
+                            "javascript"
+                                | "typescript"
+                                | "python"
+                                | "json"
+                                | "go"
+                                | "gomod"
+                                | "toml"
+                        )
                     ),
                 "unsupported extension mapping {extension}"
             );
         }
         validate_rules(&settings.rules)?;
+        validate_external(&settings)?;
+        ensure!(
+            settings
+                .style_notes
+                .iter()
+                .all(|note| !note.trim().is_empty()),
+            "styleNotes requires nonempty notes"
+        );
+        for bypass in &settings.bypasses {
+            ensure!(
+                bypass_rule(&settings, &bypass.rule),
+                "unsupported bypass rule {}",
+                bypass.rule
+            );
+            ensure!(!bypass.reason.trim().is_empty(), "bypass requires a reason");
+            ensure!(!bypass.files.is_empty(), "bypass requires files");
+            for pattern in &bypass.files {
+                ensure!(
+                    !pattern.trim().is_empty() && !pattern.starts_with('!'),
+                    "use positive bypass globs"
+                );
+                glob(pattern)?;
+            }
+        }
         for rule_override in &settings.overrides {
             ensure!(!rule_override.files.is_empty(), "override requires files");
             for pattern in &rule_override.files {
@@ -202,6 +372,23 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
     );
     settings.rules.extend(project.rules);
     settings.overrides.extend(project.overrides);
+    settings.style_notes.extend(project.style_notes);
+    settings.bypasses.extend(project.bypasses);
+    settings.external_checks.extend(project.external_checks);
+    settings.dependency_boundaries = project.dependency_boundaries;
+    settings.python_rules = project.python_rules.or(settings.python_rules);
+    settings.duplication.min_tokens = project
+        .duplication
+        .min_tokens
+        .or(settings.duplication.min_tokens);
+    settings.duplication.min_lines = project
+        .duplication
+        .min_lines
+        .or(settings.duplication.min_lines);
+    settings.duplication.severity = project
+        .duplication
+        .severity
+        .or(settings.duplication.severity);
     settings.limits = project.limits;
     Ok(Resolved {
         settings,

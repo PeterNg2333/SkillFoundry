@@ -210,6 +210,63 @@ run();"#,
 }
 
 #[test]
+fn declared_style_applies_rule_specific_bypasses_with_reasons() {
+    let project = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{
+                "styleNotes": ["Use arrows for ordinary functions."],
+                "rules": {"func-style": "error"},
+                "bypasses": [{
+                    "files": ["framework/*.ts"],
+                    "rule": "func-style",
+                    "reason": "This framework requires function declarations."
+                }]
+            }"#,
+        ),
+        (
+            "framework/route.ts",
+            "function route() { return 1; }\nvar legacy = 0;\n",
+        ),
+        ("src/route.ts", "function route() { return 1; }\n"),
+    ]);
+    let (code, report, stderr) =
+        project.run(&["check", "--json", "--rules", "func-style,no-var"], true);
+    assert_eq!(code, 1, "{stderr}\n{report}");
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2, "{report}");
+    assert_eq!(
+        diagnostic(&report, "func-style").unwrap()["file"],
+        "src/route.ts"
+    );
+    assert_eq!(
+        diagnostic(&report, "no-var").unwrap()["file"],
+        "framework/route.ts"
+    );
+    let bypasses = report["bypasses"].as_array().unwrap();
+    assert_eq!(bypasses.len(), 1, "{report}");
+    assert_eq!(bypasses[0]["finding"]["file"], "framework/route.ts");
+    assert_eq!(
+        bypasses[0]["reason"],
+        "This framework requires function declarations."
+    );
+    assert!(bypasses[0].get("directiveLine").is_none());
+}
+
+#[test]
+fn rejects_declared_bypasses_without_a_real_rule_or_reason() {
+    for (rule, reason) in [("unknown-rule", "Legacy"), ("func-style", "  ")] {
+        let config = format!(
+            r#"{{"bypasses":[{{"files":["src/*.ts"],"rule":"{rule}","reason":"{reason}"}}]}}"#
+        );
+        let project = Project::new(&[("checkignore.json", &config)]);
+        let (code, _, stderr) = project.run(&["check", "--json"], true);
+        assert_eq!(code, 2);
+        assert!(stderr.contains("bypass"), "{stderr}");
+    }
+}
+
+#[test]
 fn bypasses_only_the_attached_rule_and_checks_for_unused_bypasses() {
     let project = Project::new(&[
         (
@@ -622,7 +679,7 @@ fn native_checks_report_dependencies_comments_and_partial_coverage() {
 fn rejects_unknown_configuration_rules_checks_and_invalid_json() {
     for settings in [
         "{",
-        "{\"extensions\":{\".py\":\"python\"}}",
+        "{\"extensions\":{\".rb\":\"ruby\"}}",
         "{\"rules\":{\"misspelled-rule\":\"off\"}}",
         "{\"limits\":{\"importsPerFile\":-1}}",
     ] {

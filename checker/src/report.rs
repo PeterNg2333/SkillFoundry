@@ -1,7 +1,8 @@
+use anyhow::Result;
 use serde::Serialize;
 
 use crate::{
-    config::Resolved,
+    config::{Resolved, RuleBypass, glob},
     selection::{File, Selection, Skipped},
 };
 
@@ -22,7 +23,8 @@ pub struct Finding {
 #[serde(rename_all = "camelCase")]
 pub struct Bypass {
     pub finding: Finding,
-    pub directive_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directive_line: Option<usize>,
     pub reason: String,
 }
 
@@ -157,6 +159,60 @@ impl Report {
             value,
             unit: "count",
         });
+    }
+
+    pub fn external_finding(
+        &mut self,
+        file: &str,
+        (line, column): (usize, usize),
+        severity: &str,
+        rule: &str,
+        message: String,
+        origin: &'static str,
+    ) {
+        self.diagnostics.push(Finding {
+            file: file.to_owned(),
+            line,
+            column,
+            severity: severity.to_owned(),
+            rule: rule.to_owned(),
+            message,
+            origin,
+            offset: 0,
+        });
+    }
+
+    pub fn apply_project_bypasses(&mut self, bypasses: &[RuleBypass]) -> Result<()> {
+        if bypasses.is_empty() {
+            return Ok(());
+        }
+        let entries = bypasses
+            .iter()
+            .map(|bypass| {
+                let files = bypass
+                    .files
+                    .iter()
+                    .map(|pattern| glob(pattern))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok((bypass, files))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut retained = Vec::with_capacity(self.diagnostics.len());
+        for finding in self.diagnostics.drain(..) {
+            if let Some((bypass, _)) = entries.iter().find(|(bypass, files)| {
+                bypass.rule == finding.rule && files.iter().any(|file| file.is_match(&finding.file))
+            }) {
+                self.bypasses.push(Bypass {
+                    finding,
+                    directive_line: None,
+                    reason: bypass.reason.clone(),
+                });
+            } else {
+                retained.push(finding);
+            }
+        }
+        self.diagnostics = retained;
+        Ok(())
     }
 
     pub fn finish(&mut self) {
