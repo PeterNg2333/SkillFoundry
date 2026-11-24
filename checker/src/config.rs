@@ -1,3 +1,5 @@
+mod structure;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -8,6 +10,7 @@ use anyhow::{Context, Result, bail, ensure};
 use globset::{GlobBuilder, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+pub use structure::{FileStructure, FileStructureIgnore, FileStructurePattern};
 
 pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
 pub const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
@@ -16,6 +19,7 @@ pub const FALLBACK_ORDER: &str = "maintainable/fallback-order";
 pub const LONG_JSX_CLASS_NAME: &str = "maintainable/long-jsx-class-name";
 pub const PLAYWRIGHT_STYLE_ASSERTION: &str = "maintainable/playwright-style-assertion";
 pub const COMPLEX_MAPPED_BUTTON: &str = "maintainable/complex-mapped-button";
+pub const SIMILAR_LOOPS: &str = "maintainable/similar-loops";
 pub const TOOL_CHECKS: &[&str] = &[
     "dependency-boundaries",
     "duplication",
@@ -40,6 +44,7 @@ pub const RULES: &[&str] = &[
     LONG_JSX_CLASS_NAME,
     PLAYWRIGHT_STYLE_ASSERTION,
     COMPLEX_MAPPED_BUTTON,
+    SIMILAR_LOOPS,
 ];
 
 pub fn validate_rule_filter(rules: &[String]) -> Result<()> {
@@ -118,12 +123,20 @@ pub struct Duplication {
     pub severity: Option<CheckSeverity>,
 }
 
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct LoopSimilarity {
+    pub min_similarity: Option<usize>,
+    pub min_body_tokens: Option<usize>,
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct Settings {
     pub ignore: Vec<String>,
     pub extensions: BTreeMap<String, Value>,
     pub rules: BTreeMap<String, Value>,
+    pub file_structure: Option<FileStructure>,
     pub overrides: Vec<Override>,
     pub style_notes: Vec<String>,
     pub bypasses: Vec<RuleBypass>,
@@ -131,6 +144,7 @@ pub struct Settings {
     pub dependency_boundaries: DependencyBoundaries,
     pub python_rules: Option<Vec<String>>,
     pub duplication: Duplication,
+    pub loop_similarity: LoopSimilarity,
     pub limits: Limits,
 }
 
@@ -310,6 +324,23 @@ fn decode(source: &str, name: &str) -> Result<Settings> {
         }
         validate_rules(&settings.rules)?;
         validate_external(&settings)?;
+        if let Some(structure) = &settings.file_structure {
+            structure.validate().context("fileStructure")?;
+        }
+        ensure!(
+            settings
+                .loop_similarity
+                .min_similarity
+                .is_none_or(|value| (1..=100).contains(&value)),
+            "loopSimilarity.minSimilarity must be between 1 and 100"
+        );
+        ensure!(
+            settings
+                .loop_similarity
+                .min_body_tokens
+                .is_none_or(|value| value >= 3),
+            "loopSimilarity.minBodyTokens must be at least 3"
+        );
         ensure!(
             settings
                 .style_notes
@@ -351,8 +382,17 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
         include_str!("../config/defaults.json"),
         "embedded:checkignore.json",
     )?;
-    let file = root.join(requested.unwrap_or(Path::new("checkignore.json")));
-    let source = match fs::read_to_string(&file) {
+    let mut file = root.join(requested.unwrap_or(Path::new("checkignore.json")));
+    let mut source = fs::read_to_string(&file);
+    if requested.is_none()
+        && source
+            .as_ref()
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    {
+        file = root.join("check.json");
+        source = fs::read_to_string(&file);
+    }
+    let source = match source {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && requested.is_none() => {
             return Ok(Resolved {
@@ -373,12 +413,21 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
             .map(|(extension, kind)| (extension.to_lowercase(), kind)),
     );
     settings.rules.extend(project.rules);
+    settings.file_structure = project.file_structure;
     settings.overrides.extend(project.overrides);
     settings.style_notes.extend(project.style_notes);
     settings.bypasses.extend(project.bypasses);
     settings.external_checks.extend(project.external_checks);
     settings.dependency_boundaries = project.dependency_boundaries;
     settings.python_rules = project.python_rules.or(settings.python_rules);
+    settings.loop_similarity.min_similarity = project
+        .loop_similarity
+        .min_similarity
+        .or(settings.loop_similarity.min_similarity);
+    settings.loop_similarity.min_body_tokens = project
+        .loop_similarity
+        .min_body_tokens
+        .or(settings.loop_similarity.min_body_tokens);
     settings.duplication.min_tokens = project
         .duplication
         .min_tokens
@@ -425,20 +474,11 @@ impl<'a> Policy<'a> {
         Ok(Self { rules, filter })
     }
 
-    pub fn severity(&self, name: &str) -> Option<&str> {
+    pub fn severity(&self, name: &str) -> Option<&'static str> {
         if !self.filter.is_empty() && !self.filter.iter().any(|rule| rule == name) {
             return None;
         }
-        let value = self.rules.get(name)?;
-        let severity = value
-            .as_array()
-            .and_then(|values| values.first())
-            .unwrap_or(value);
-        match (severity.as_str(), severity.as_u64()) {
-            (Some("error"), _) | (_, Some(2)) => Some("error"),
-            (Some("warn"), _) | (_, Some(1)) => Some("warning"),
-            _ => None,
-        }
+        rule_severity(self.rules.get(name)?)
     }
 
     pub fn option(&self, name: &str) -> Option<&Value> {
@@ -447,5 +487,17 @@ impl<'a> Policy<'a> {
 
     pub fn threshold(&self, name: &str, default: u64) -> u64 {
         self.option(name).and_then(Value::as_u64).unwrap_or(default)
+    }
+}
+
+pub fn rule_severity(value: &Value) -> Option<&'static str> {
+    let severity = value
+        .as_array()
+        .and_then(|values| values.first())
+        .unwrap_or(value);
+    match (severity.as_str(), severity.as_u64()) {
+        (Some("error"), _) | (_, Some(2)) => Some("error"),
+        (Some("warn"), _) | (_, Some(1)) => Some("warning"),
+        _ => None,
     }
 }

@@ -7,11 +7,12 @@ The runtime is one Rust executable with embedded native checks and optional adap
 | Owner | Responsibility |
 |---|---|
 | `checker/src/main.rs` | CLI arguments, sequencing, output and exit codes |
-| `checker/src/config.rs` | Strict typed configuration, overrides and rule policy |
-| `checker/src/selection/` | Explicit scope, extension routing, Git/Docker exclusions and skip reasons |
+| `checker/src/config.rs`, `checker/src/config/structure.rs` | Strict typed configuration, rule overrides and file structure schema |
+| `checker/src/selection/` | Scoped path traversal, exclusions, file structure matching and extension routing |
 | `checker/src/checks/mod.rs` | Available checks, dispatch and actual per-check coverage |
 | `checker/src/checks/javascript.rs` | Structural rules, exports and import organization |
 | `checker/src/checks/semantics.rs` | Oxc syntax, binding mutation, single-use helpers and type-only imports |
+| `checker/src/checks/loop_similarity.rs` | Cross-file fingerprints and local import paths for similar loop bodies |
 | `checker/src/checks/directives.rs` | JS/TS comment directives, statement-scoped bypasses and their audit entries |
 | `checker/src/checks/ast.rs` | Native grammar parsing, Go inspection and comment groups |
 | `checker/src/checks/metrics.rs` | Nesting, branch complexity and source-line measurements |
@@ -33,9 +34,11 @@ These responsibilities require two JS/TS parse representations. This adds build 
 
 ## Selection contract
 
-Apply embedded and project `checkignore.json`, scoped root/nested `.gitignore`, root `.dockerignore`, and extension routing before opening a file for analysis. Any excluding policy can reject a path. Git excluded parents stay pruned. Docker negations may restore a descendant, so an excluded Docker directory can require traversal. Symlinks are skipped. Explicit paths follow the same rules and must remain inside the root.
+Both selection modes apply embedded and project ignores and scoped root/nested `.gitignore`. Git excluded parents stay pruned. Symlinks are skipped. Explicit paths follow the same rules and must remain inside the root. Source selection also applies root `.dockerignore` and extension routing before opening files. Docker negations may restore a descendant, so an excluded Docker directory can require traversal.
 
 `ignore` owns Git matching. Docker's context-root matching and negations are implemented separately with `globset`; fixtures are compared with the previous Moby-backed checker. Nested `.dockerignore` files do not create another context. The checker does not infer Dockerfile-specific contexts or load global user Git exclusions.
+
+The file structure check reuses scoped traversal and checks file and directory names, including assets outside source extension coverage. It skips subtrees marked with `$ignore` in the structure policy. It covers repository paths excluded from Docker and uses `globset` for inherited filename patterns and `termtree` for the text view.
 
 Tool checks use the selected file set. dependency-cruiser receives an exact path filter, validates edges within the selected JS/TS graph, and can read a declared project tsconfig for aliases. jscpd compares copies of selected JS/TS, Python and Go files in a temporary directory. Ruff and gofmt receive selected source paths. Adapters resolve tools from absolute PATH directories. On Windows the Node adapters can use npm's package entry points directly.
 
@@ -46,6 +49,7 @@ Exit codes are 0 for completed checks without errors, 1 for error findings, and 
 `--rules` narrows configurable JS/TS rule IDs while preserving project overrides and syntax validation. Statement-scoped JS/TS bypasses and file-scoped project bypasses preserve suppressed findings with their reasons. The optional `directives` check reports work comments as data for the skill to use when the user requests edits.
 
 - Syntax and local binding analysis do not replace project type checking.
+- The opt-in similar-loops rule compares JS/TS loop bodies only within the selected files. It reports both locations and optionally shows a relative import path of up to two edges. It does not resolve project aliases or Vue scripts.
 - Go parsing, imports, functions and comment groups use the embedded grammar. `go-format` uses read-only `gofmt -l`. Run package-level Go linters through the project workflow.
 - Dependency measurements count manifest declarations, not installed trees, vulnerability findings or bundle size. Go module analysis covers `require` declarations without resolving modules.
 - Complexity and depth use the supplied native metric definitions. The engine does not host arbitrary ESLint plugins. Unknown rules and unsupported options fail configuration validation.

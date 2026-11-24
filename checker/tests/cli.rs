@@ -730,6 +730,61 @@ fn native_checks_report_dependencies_comments_and_partial_coverage() {
 }
 
 #[test]
+fn loads_check_json_with_structure_and_applies_existing_rules() {
+    let policy = r#"{
+        "rules": {"maintainable/long-condition": "warn"},
+        "fileStructure": {"$root": "src", "$accepts": ["*.ts"], "/": {"viewer": {"/": {"page.ts": {}}}}}
+    }"#;
+    let project = Project::new(&[
+        ("check.json", policy),
+        (
+            "src/viewer/page.ts",
+            "if (first && second && third && fourth) show();",
+        ),
+    ]);
+    let report = project.success(
+        &["check", "--rules", "maintainable/long-condition", "--json"],
+        true,
+    );
+    assert!(
+        report["config"]["project"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("check.json"),
+        "{report}"
+    );
+    assert_eq!(report["summary"]["warnings"], 1, "{report}");
+}
+
+#[test]
+fn prefers_legacy_policy_and_honors_explicit_config_selection() {
+    let project = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{"rules": {"maintainable/long-condition": "off"}}"#,
+        ),
+        (
+            "check.json",
+            r#"{"rules": {"maintainable/long-condition": "warn"}}"#,
+        ),
+        (
+            "value.ts",
+            "if (first && second && third && fourth) show();",
+        ),
+    ]);
+    let args = ["check", "--rules", "maintainable/long-condition", "--json"];
+    let report = project.success(&args, true);
+    assert_eq!(report["summary"]["warnings"], 0, "{report}");
+    let report = project.success(&[&args[..], &["--config", "check.json"]].concat(), true);
+    assert_eq!(report["summary"]["warnings"], 1, "{report}");
+
+    let invalid = Project::new(&[("check.json", r#"{"fileStructure": []}"#)]);
+    let (status, _, stderr) = invalid.run(&args, true);
+    assert_eq!(status, 2, "{stderr}");
+    assert!(stderr.contains("configuration"), "{stderr}");
+}
+
+#[test]
 fn rejects_unknown_configuration_rules_checks_and_invalid_json() {
     for settings in [
         "{",

@@ -7,6 +7,13 @@ use crate::{
 };
 
 #[derive(Serialize)]
+pub struct Location {
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Serialize)]
 pub struct Finding {
     pub file: String,
     pub line: usize,
@@ -15,6 +22,8 @@ pub struct Finding {
     pub rule: String,
     pub message: String,
     pub origin: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related: Option<Location>,
     #[serde(skip)]
     pub offset: usize,
 }
@@ -104,11 +113,6 @@ pub fn source_location(source: &str, offset: usize) -> (usize, usize) {
 
 impl Report {
     pub fn new(root: String, selected: Selection, configuration: &Resolved, list: bool) -> Self {
-        let summary = Summary {
-            selected: selected.files.len(),
-            skipped: selected.skipped.len(),
-            ..Summary::default()
-        };
         Self {
             schema_version: 1,
             root,
@@ -125,7 +129,7 @@ impl Report {
             rule_filter: Vec::new(),
             bypasses: Vec::new(),
             directives: Vec::new(),
-            summary,
+            summary: Summary::default(),
         }
     }
 
@@ -147,6 +151,7 @@ impl Report {
             rule: rule.to_owned(),
             message: message.into(),
             origin: "static",
+            related: None,
             offset,
         });
     }
@@ -178,6 +183,7 @@ impl Report {
             rule: rule.to_owned(),
             message,
             origin,
+            related: None,
             offset: 0,
         });
     }
@@ -200,7 +206,14 @@ impl Report {
         let mut retained = Vec::with_capacity(self.diagnostics.len());
         for finding in self.diagnostics.drain(..) {
             if let Some((bypass, _)) = entries.iter().find(|(bypass, files)| {
-                bypass.rule == finding.rule && files.iter().any(|file| file.is_match(&finding.file))
+                bypass.rule == finding.rule
+                    && files.iter().any(|file| {
+                        file.is_match(&finding.file)
+                            || finding
+                                .related
+                                .as_ref()
+                                .is_some_and(|related| file.is_match(&related.file))
+                    })
             }) {
                 self.bypasses.push(Bypass {
                     finding,
@@ -216,6 +229,8 @@ impl Report {
     }
 
     pub fn finish(&mut self) {
+        self.summary.selected = self.files.len();
+        self.summary.skipped = self.skipped.len();
         self.summary.errors = self
             .diagnostics
             .iter()

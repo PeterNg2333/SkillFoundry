@@ -11,9 +11,53 @@ use oxc_semantic::{AstNode, Semantic, SemanticBuilder};
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    config::{FALLBACK_ORDER, LONG_CONDITION, OBJECT_SPREAD_NEWLINE, Policy, SINGLE_USE_HELPER},
+    config::{
+        FALLBACK_ORDER, LONG_CONDITION, OBJECT_SPREAD_NEWLINE, Policy, SIMILAR_LOOPS,
+        SINGLE_USE_HELPER,
+    },
     report::Report,
 };
+
+#[derive(Default)]
+pub struct LoopInputs {
+    pub bindings: BTreeMap<usize, usize>,
+    pub imports: Vec<String>,
+}
+
+fn runtime_import(kind: AstKind<'_>) -> Option<&str> {
+    match kind {
+        AstKind::ImportDeclaration(import)
+            if !import.import_kind.is_type()
+                && import.specifiers.as_ref().is_none_or(|items| {
+                    items.is_empty()
+                        || items.iter().any(|item| {
+                            !matches!(item,
+                    ImportDeclarationSpecifier::ImportSpecifier(item) if item.import_kind.is_type())
+                        })
+                }) =>
+        {
+            Some(import.source.value.as_str())
+        }
+        AstKind::ExportFromDeclaration(export)
+            if !export.export_kind.is_type()
+                && (export.specifiers.is_empty()
+                    || export
+                        .specifiers
+                        .iter()
+                        .any(|item| !item.export_kind.is_type())) =>
+        {
+            Some(export.source.value.as_str())
+        }
+        AstKind::ExportAllDeclaration(export) if !export.export_kind.is_type() => {
+            Some(export.source.value.as_str())
+        }
+        AstKind::ImportExpression(import) => match &import.source {
+            Expression::StringLiteral(source) => Some(source.value.as_str()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 fn condition_terms(expression: &Expression<'_>) -> usize {
     match expression.without_parentheses() {
@@ -216,8 +260,9 @@ pub fn check(
     typescript: bool,
     inspect: bool,
     policy: &Policy<'_>,
+    collect_loop_inputs: bool,
     report: &mut Report,
-) -> bool {
+) -> Option<LoopInputs> {
     let allocator = Allocator::default();
     let extension = file.rsplit('.').next().unwrap_or("").to_lowercase();
     let mut source_type = if typescript {
@@ -238,7 +283,7 @@ pub fn check(
                 .map_or(0, |label| label.offset() as usize);
             report.finding(file, source, offset, "error", "syntax", error.to_string());
         }
-        return false;
+        return None;
     }
     let built = SemanticBuilder::new()
         .with_build_nodes(true)
@@ -252,10 +297,11 @@ pub fn check(
                 .map_or(0, |label| label.offset() as usize);
             report.finding(file, source, offset, "error", "syntax", error.to_string());
         }
-        return false;
+        return None;
     }
+    let mut loop_inputs = LoopInputs::default();
     if !inspect {
-        return true;
+        return Some(loop_inputs);
     }
     let semantic = built.semantic;
     super::ui::check(&semantic, file, source, policy, report);
@@ -269,7 +315,30 @@ pub fn check(
     let object_spread_severity = policy.severity(OBJECT_SPREAD_NEWLINE);
     let long_condition_severity = policy.severity(LONG_CONDITION);
     let fallback_order_severity = policy.severity(FALLBACK_ORDER);
+    let collect_bindings = collect_loop_inputs && policy.severity(SIMILAR_LOOPS).is_some();
     for node in semantic.nodes().iter() {
+        if collect_loop_inputs
+            && let Some(specifier) = runtime_import(node.kind())
+            && (specifier.starts_with("./") || specifier.starts_with("../"))
+        {
+            loop_inputs.imports.push(specifier.to_owned());
+        }
+        if collect_bindings {
+            let symbol = match node.kind() {
+                AstKind::BindingIdentifier(binding) => binding.symbol_id.get(),
+                AstKind::IdentifierReference(reference) => reference
+                    .reference_id
+                    .get()
+                    .and_then(|id| scope.get_reference(id).symbol_id()),
+                _ => None,
+            };
+            if let Some(symbol) = symbol {
+                loop_inputs.bindings.insert(
+                    node.kind().span().start as usize,
+                    scope.symbol_span(symbol).start as usize,
+                );
+            }
+        }
         if let Some(severity) = single_use_severity {
             check_single_use_helper(node, &semantic, file, source, severity, report);
         }
@@ -388,5 +457,6 @@ pub fn check(
             _ => {}
         }
     }
-    true
+    Some(loop_inputs)
 }
+use std::collections::BTreeMap;

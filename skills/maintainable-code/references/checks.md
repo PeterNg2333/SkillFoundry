@@ -13,9 +13,11 @@ Use `$mc-init` or `$maintainable-code /init` to inspect the project and create i
 | `/check` | Use default checks and project file selection. |
 | `/check single-use helpers in src/routes` | `--rules maintainable/single-use-helper -- src/routes` |
 | `/check TS prefer-const in src/orders.ts and src/users.ts` | `--checks typescript --rules prefer-const -- src/orders.ts src/users.ts` |
+| `/check file structure` | `--checks file-structure` |
 | `/check package dependency counts` | `--checks dependencies` |
 | `/check dependency boundaries` | `--checks dependency-boundaries` |
 | `/check duplicate code in src` | `--checks duplication -- src` |
+| `/check similar loops in src` | `--rules maintainable/similar-loops -- src` |
 | `/check Python lint and Go formatting` | `--checks python,go-format` |
 | `/check pending AI work in src/routes` | `--checks directives -- src/routes` |
 
@@ -36,6 +38,7 @@ maintainable-check capabilities --json
 maintainable-check select --root . --json
 maintainable-check check --root . --json
 maintainable-check check --root . --checks dependencies,json --json
+maintainable-check check --root . --checks file-structure
 maintainable-check check --root . --checks javascript,typescript src
 maintainable-check check --root . --rules maintainable/single-use-helper -- src/routes
 maintainable-check check --root . --checks directives -- src/routes
@@ -54,14 +57,15 @@ maintainable-check check --root . --checks go,comments src
 | `go-format` | Go formatting via gofmt |
 | `comments` | AST comment groups and optional presence rule for JS/TS/Go |
 | `directives` | Source locations and descriptions for `@impl`, `@refactor` and `@check` in JS/TS comments |
+| `file-structure` | Declared directories, file names and file types from the project's `fileStructure` |
 
-Plain `check` runs the native default groups and the project's `externalChecks`. Use `--checks` to choose exact groups. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and coverage. `select` and `check --list` only list selection.
+Plain `check` runs the native default groups, any declared `fileStructure` and the project's `externalChecks`. Use `--checks` to choose exact groups. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and coverage. `select` and `check --list` only list source selection.
 
 Keep project type checking, typed linting and behavior tests for their respective contracts. Manifest dependency metrics count declarations, and Go manifest inspection covers require directives. Native style metrics use the checker's definitions.
 
 ## Configuration and selection
 
-Embedded defaults are owned by `checker/config/defaults.json` in the source checkout. A target project can provide `checkignore.json`, or select another JSON file with `--config`. It is parsed as data and never executed.
+Embedded defaults are owned by `checker/config/defaults.json` in the source checkout. The checker reads `checkignore.json` first and uses `check.json` if that file is absent. `--config` selects an explicit JSON file. The checker reads policy as data.
 
 - Positive root-relative `ignore` globs add exclusions. Extension mappings and rule severity overrides merge with defaults.
 - Root/nested Git ignores retain scope, ordering, anchors and negations. Git excluded parents stay pruned. Patterns apply to selected paths, including tracked files.
@@ -91,6 +95,52 @@ Dependency/import limits are inactive until configured. Select `comments` to app
 Rules accept off/warn/error or numeric severities. Depth/complexity accept numeric thresholds; max-lines accepts a number or max/skipBlankLines/skipComments options. Func-style supports the supplied expression form. Use file-specific overrides for explicit file policy. Changes to exclusions, thresholds or severities are policy changes that need explanation.
 
 `styleNotes` gives agents the rationale for project conventions. The checker enforces `rules` and `overrides`. Each `bypasses` entry names a rule, positive root-relative file globs and a reason. A matching finding stays visible in the bypass report and the corresponding file is still checked. Inline JS/TS bypasses take precedence.
+
+### File structure
+
+Declare the tree in the same JSON policy as the other rules.
+
+```json
+{
+  "fileStructure": {
+    "$accepts": ["./*.json"],
+    "/": {
+      "src": {
+        "$accepts": ["*.ts"],
+        "/": {
+          "app": {
+            "$accepts": ["*.tsx", "./*.ico"],
+            "/": { "layout.tsx": {}, "routes": { "/": {} } }
+          }
+        }
+      },
+      "data": { "$accepts": ["*.json", "*.geojson"], "/": {} },
+      "scripts": { "$accepts": ["*.mjs"], "/": {} },
+      "dist": { "$ignore": true, "/": {} }
+    }
+  }
+}
+```
+
+- The tree starts at the repository root unless `$root` names a relative directory such as `src/views`. Directory objects contain `"/"` with literal child names. Use `{}` for a named file. Child entries are optional. An optional `$description` appears in the text tree.
+- `$accepts` applies to files. A pattern like `*.ts` matches filenames in that directory and its declared descendants. Patterns containing `/` match paths relative to the declaring directory. `./*.ico` confines icons to the immediate directory. Patterns and literal names are case-sensitive.
+- Exact names take precedence over globs. Otherwise the closest directory with a matching pattern wins. A `$ignore` array ignores matching files and wins over `$accepts` on the same directory. A node with `$ignore: true` skips that file or subtree. This ignore applies to structure only.
+- The structure scan uses project and built-in ignores and scoped Git ignores. It checks filenames without reading their contents. Docker ignore and extension routing apply to source checks. Paths inspected only for structure have type `structure` in a JSON report.
+
+Run `maintainable-check check --checks file-structure` to see the declared tree and any `file-structure/path` errors. Add `--json` for the machine-readable report. Pass a path after `--` to scope the inspection.
+
+### Similar loop bodies
+
+```json
+{
+  "rules": {"maintainable/similar-loops": "warn"},
+  "loopSimilarity": {"minSimilarity": 65, "minBodyTokens": 12}
+}
+```
+
+The native rule defaults to off. Both JavaScript or TypeScript files must be selected and enabled. Run `maintainable-check check --root . --rules maintainable/similar-loops --json -- src` to compare the selected source files. `minSimilarity` accepts an integer percentage from 1 to 100. `minBodyTokens` accepts an integer of at least 3. Lower values include more review candidates.
+
+Each finding has a `related` location for the other loop. The message includes a relative import path of up to two edges when one is found among selected, successfully parsed JavaScript and TypeScript files. Relationship evidence covers relative imports, re-exports and literal `import()` calls. Project aliases, package resolution, CommonJS `require()` and Vue scripts are outside this rule's current coverage. A pair can be reported without an import path. Use a reasoned inline `@bypass` before either loop, or a project bypass matching either file. A narrow scan that omits a loop's only match can report an unused inline bypass.
 
 ## Optional tool checks
 

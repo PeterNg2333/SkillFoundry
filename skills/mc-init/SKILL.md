@@ -1,6 +1,6 @@
 ---
 name: mc-init
-description: Initialize or update a project's SkillFoundry checkignore.json. Use when asked to declare code style, language coverage, ignores, or bypasses in automatic or questionnaire mode.
+description: Initialize or update a project's SkillFoundry policy. Use when asked to declare code style, language coverage, ignores, or bypasses in automatic or questionnaire mode.
 ---
 
 # Initialize project policy
@@ -9,7 +9,7 @@ description: Initialize or update a project's SkillFoundry checkignore.json. Use
 
 ## Inspect the project
 
-Use the requested project root, or resolve it from the current working directory. Read the existing `checkignore.json`, repository instructions, language manifests and source extensions, lint and formatter settings, and Git and Docker ignore files that apply. Sample authored source when the configuration leaves an important convention unclear. Check supported rule IDs and language coverage using `maintainable-check capabilities --json` and the [checker reference](../maintainable-code/references/checks.md) when available. Prefer the current checkout's checker when initializing SkillFoundry itself.
+Use the requested project root, or resolve it from the current working directory. Read `checkignore.json` or, if absent, `check.json`. Read repository instructions, language manifests and source extensions, lint and formatter settings, and Git and Docker ignore files that apply. Sample authored source when the configuration leaves an important convention unclear. Check supported rule IDs and language coverage using `maintainable-check capabilities --json` and the [checker reference](../maintainable-code/references/checks.md) when available. Prefer the current checkout's checker when initializing SkillFoundry itself.
 
 ## Choose policy
 
@@ -25,4 +25,4 @@ In questionnaire mode, ask one question at a time on topics the user has yet to 
 
 Draft strict JSON using the supported checker fields. For an existing policy, merge the requested choices into the document and preserve unrelated settings. When the checker is available, run `maintainable-check select --root <project> --config <draft-path> --json` on the draft. Check that representative source remains selected and any new exclusions match only their intended paths. Correct invalid configuration before replacing the project file. When the checker is unavailable, verify JSON syntax and disclose the missing selection check.
 
-Write `checkignore.json` at the target root and verify selection using that file. Report the path, language coverage, enforceable style, and new ignores or bypasses with their reasons. Include a focused read-only check when adopting new enforcement or measuring a baseline.
+Update the existing policy file. If neither file exists, write `checkignore.json` at the target root. Verify selection using the resulting file. Report the path, language coverage, enforceable style, and new ignores or bypasses with their reasons. Include a focused read-only check when adopting new enforcement or measuring a baseline.

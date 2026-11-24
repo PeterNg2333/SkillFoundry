@@ -1,6 +1,7 @@
 mod ast;
 mod directives;
 mod javascript;
+mod loop_similarity;
 mod manifests;
 mod metrics;
 mod semantics;
@@ -10,13 +11,14 @@ mod ui;
 use crate::{
     config::{RULES, Resolved, TOOL_CHECKS, validate_rule_filter},
     report::{CheckStatus, Report},
+    selection,
 };
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 pub struct SourceFile<'a> {
@@ -34,6 +36,8 @@ pub const DEFAULT_CHECKS: &[&str] = &[
     "javascript",
     "typescript",
 ];
+pub const FILE_STRUCTURE: &str = "file-structure";
+const STRUCTURE_PATH: &str = "file-structure/path";
 const CATALOG: &[&str] = &[
     "json",
     "toml",
@@ -43,13 +47,14 @@ const CATALOG: &[&str] = &[
     "typescript",
     "comments",
     "directives",
+    FILE_STRUCTURE,
 ];
 
 pub fn capabilities() -> Value {
     let checks: Vec<_> = CATALOG.iter().chain(TOOL_CHECKS).copied().collect();
     json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":checks, "rules":RULES,
         "externalChecks":{"dependency-boundaries":"dependency-cruiser","duplication":"jscpd","python":"ruff","go-format":"gofmt"},
-        "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "toml"],
+        "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "termtree", "toml"],
         "unsupported":[{"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
         "modelReview":{"implemented":false,"default":"off"}})
 }
@@ -68,6 +73,7 @@ pub fn validate(names: &[String]) -> Result<()> {
 
 pub fn run(
     root: &Path,
+    paths: &[PathBuf],
     settings: &Resolved,
     names: &[String],
     rules: &[String],
@@ -82,6 +88,7 @@ pub fn run(
     );
     let mut counts = BTreeMap::new();
     let mut checked = BTreeSet::new();
+    let mut loop_files = Vec::new();
     for (file, kind) in report
         .files
         .iter()
@@ -120,20 +127,24 @@ pub fn run(
                     comments,
                     report,
                 )?,
-                "javascript" | "typescript" => javascript::check(
-                    &SourceFile {
-                        project: root,
-                        path: &file,
-                        text: source,
-                        kind: &kind,
-                    },
-                    &settings.settings,
-                    main,
-                    comments,
-                    directives,
-                    rules,
-                    report,
-                )?,
+                "javascript" | "typescript" => {
+                    if let Some(file) = javascript::check(
+                        &SourceFile {
+                            project: root,
+                            path: &file,
+                            text: source,
+                            kind: &kind,
+                        },
+                        &settings.settings,
+                        main,
+                        comments,
+                        directives,
+                        rules,
+                        report,
+                    )? {
+                        loop_files.push(file);
+                    }
+                }
                 _ => {}
             }
             if main {
@@ -148,7 +159,11 @@ pub fn run(
         }
         checked.insert(file);
     }
+    loop_similarity::finish(root, loop_files, settings.settings.loop_similarity, report);
     for name in names {
+        if name == FILE_STRUCTURE {
+            continue;
+        }
         if TOOL_CHECKS.contains(&name.as_str()) {
             tools::run(name, root, &settings.settings, report, &mut checked)?;
             continue;
@@ -174,7 +189,64 @@ pub fn run(
             reason: Some("Enable the go-format check to run gofmt.".to_owned()),
         });
     }
+    if selected(FILE_STRUCTURE) {
+        check_structure(root, paths, settings, report, &mut checked)?;
+    }
     report.summary.checked = checked.len();
     report.summary.unchecked = report.files.len() - report.summary.checked;
+    Ok(())
+}
+
+fn check_structure(
+    root: &Path,
+    paths: &[PathBuf],
+    settings: &Resolved,
+    report: &mut Report,
+    checked: &mut BTreeSet<String>,
+) -> Result<()> {
+    let mut status = CheckStatus {
+        id: FILE_STRUCTURE.to_owned(),
+        status: "not-applicable",
+        files: 0,
+        reason: Some("No fileStructure policy is configured.".to_owned()),
+    };
+    if let Some(policy) = &settings.settings.file_structure {
+        let result = selection::select_structure(root, paths, settings, policy)?;
+        status.files = result.selection.files.len();
+        if result.inspected {
+            status.status = "checked";
+            status.reason = None;
+        } else {
+            status.reason =
+                Some("No fileStructure entries were inspected in this scope.".to_owned());
+        }
+        for violation in result.violations {
+            report.finding(
+                &violation.path,
+                "",
+                0,
+                "error",
+                STRUCTURE_PATH,
+                violation.message,
+            );
+        }
+        checked.extend(result.selection.files.iter().map(|file| file.path.clone()));
+        report.files.extend(result.selection.files);
+        report
+            .files
+            .sort_by(|left, right| left.path.cmp(&right.path));
+        report.files.dedup_by(|left, right| left.path == right.path);
+        report.skipped.retain(|entry| {
+            entry.reason != "unsupported-extension" || !checked.contains(&entry.path)
+        });
+        report.skipped.extend(result.selection.skipped);
+        report
+            .skipped
+            .sort_by(|left, right| (&left.path, left.reason).cmp(&(&right.path, right.reason)));
+        report
+            .skipped
+            .dedup_by(|left, right| left.path == right.path && left.reason == right.reason);
+    }
+    report.checks.push(status);
     Ok(())
 }

@@ -7,10 +7,10 @@ use ast_grep_language::SupportLang;
 use super::{
     SourceFile,
     ast::{self, SyntaxNode},
-    directives, metrics, semantics,
+    directives, loop_similarity, metrics, semantics,
 };
 use crate::{
-    config::{Policy, Settings},
+    config::{Policy, SIMILAR_LOOPS, Settings},
     report::Report,
 };
 
@@ -152,7 +152,7 @@ pub fn check(
     inspect_directives: bool,
     rules: &[String],
     report: &mut Report,
-) -> Result<()> {
+) -> Result<Option<loop_similarity::File>> {
     let SourceFile {
         project,
         path: file,
@@ -161,9 +161,18 @@ pub fn check(
     } = *input;
     let policy = Policy::for_file(settings, file, rules)?;
     let first_finding = report.diagnostics.len();
-    if !semantics::check(file, source, kind == "typescript", inspect, &policy, report) {
-        return Ok(());
-    }
+    let collect_loops = inspect && loop_similarity::requested(settings, rules);
+    let Some(loop_inputs) = semantics::check(
+        file,
+        source,
+        kind == "typescript",
+        inspect,
+        &policy,
+        collect_loops,
+        report,
+    ) else {
+        return Ok(None);
+    };
     let (language, label) = match (kind, file.to_lowercase().ends_with(".tsx")) {
         ("typescript", true) => (SupportLang::Tsx, "Tsx"),
         ("typescript", false) => (SupportLang::TypeScript, "TypeScript"),
@@ -251,7 +260,7 @@ pub fn check(
         let (groups, _) = ast::comments(&root, source);
         ast::check_comments(file, source, groups, &settings.limits, report);
     }
-    if inspect || inspect_directives {
+    let bypasses = if inspect || inspect_directives {
         directives::check(
             &root,
             input,
@@ -259,7 +268,18 @@ pub fn check(
             inspect_directives,
             first_finding,
             report,
-        );
-    }
-    Ok(())
+        )
+    } else {
+        Vec::new()
+    };
+    Ok(collect_loops.then(|| {
+        loop_similarity::collect(
+            &root,
+            input,
+            loop_inputs,
+            policy.severity(SIMILAR_LOOPS),
+            settings.loop_similarity,
+            bypasses,
+        )
+    }))
 }

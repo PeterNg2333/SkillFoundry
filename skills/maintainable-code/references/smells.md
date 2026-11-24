@@ -84,6 +84,12 @@ A route-hint button with conditional classes, `aria-pressed` and separate number
 
 These three rules default to off. Set any of their values to `"warn"` under `rules` in the project's `checkignore.json`.
 
+### `maintainable/similar-loops` · Deterministic
+
+Flag JS/TS loop bodies in different files that could need the same maintenance change. The checker compares `for`, `for…in`, `for…of`, `while` and `do…while` bodies. It replaces ordinary identifier uses of bindings declared inside the loop with local identifiers in first-use order. It preserves names from outside the loop, property names, literals and operators. The similarity score is the number of shared three-token sequences divided by the number present in either body, counting repetitions. Comments, semicolons and type annotations are ignored.
+
+Two loops that test `row.active` and push `normalizeId(row.id)` can still match when one calls the variable `item`. A loop that checks `item.expired` and calls `archive(item.id)` has a different body. Similar bodies can be intentional when iteration domains, lifecycle or ownership differ. Verify the loop headers and callers before sharing the implementation. See [thresholds and bypasses](checks.md#similar-loop-bodies).
+
 ### `explicit-feature-flow` · Contextual review
 
 Make ownership, names, decisions and public behavior easy to follow. Report a finding when a caller or likely change exposes a specific cost.

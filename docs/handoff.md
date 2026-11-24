@@ -1,9 +1,11 @@
 # Current handoff
 
-Updated 2026-11-21.
+Updated 2026-11-24.
 
 ## Status
 
+- The checker reads `check.json` when `checkignore.json` is absent. A declared `fileStructure` opts into rules for file types and directories. The dedicated check renders the declaration as a tree and reports violations as text or JSON.
+- `maintainable/similar-loops` is an opt-in JS/TS rule for cross-file loop bodies. It normalizes loop-local bindings, accepts project similarity and minimum-body settings, and shows relative import relationships of up to two edges when available. Inline and project bypasses can match either endpoint.
 - The standalone checker is at 0.3.0. `/check` resolves paths and exact native rule IDs. The current JS/TS rules cover syntax, selected style and import policy, nesting, complexity, file length, and private helpers with one direct caller. The CLI reports unsupported checks explicitly and supports audited, statement-scoped `@bypass` comments.
 - `/add-smell` records a deterministic check or contextual rule from examples. `/review-smells` is an explicit read-only skill prompt that examines callers, boundaries, and tests. Native findings and CI exit codes come from `/check`. The [worked example](../skills/maintainable-code/references/smells.md) covers naming, feature ownership, early returns, a Zod input boundary, FP/OOP, and behavior-focused tests.
 - The `0.3.1-init.1` preview introduced project style declarations, reasoned file/rule bypasses, optional tool checks, and the initializer's automatic and questionnaire modes.
@@ -12,6 +14,11 @@ Updated 2026-11-21.
 
 ## Verified evidence
 
+- The file structure check passed `sh scripts/build.sh` with 38 CLI tests, rustfmt, Clippy and the Windows release build. All seven distribution tests passed. With an empty PATH, the kiosk repository check rendered the tree and inspected 273 files without a structure violation. The two scoped JS/TS rules reproduced the legacy report across 221 checked files.
+- The `0.3.1-check-config.1` preview passed `sh scripts/build.sh` with 34 CLI tests and all seven distribution tests. Both skill ZIPs were built from clean snapshot `d9e706f`, independently verified, and installed. The installed checker discovered the combined `check.json` in `ai-kiosk-indoor-map-v2` and reproduced the legacy result across 172 JS/TS files.
+- The similar-loops change passed `sh scripts/build.sh` on Windows with 32 CLI tests, rustfmt, Clippy and the release build. Four focused CLI regressions verify renamed bindings, cross-file scope, near matches, import paths, thresholds and bypass auditing. The real external-tools test remains opt-in. All seven distribution tests passed.
+- The `0.3.1-loops.1` ZIP was built from clean snapshot `61eae78`, and its integrity, contents, standalone behavior with an empty PATH and user-level installation receipt were verified. The snapshot includes the rule changes and their documentation.
+- The similar-loops pilot checked 172 JS/TS files in `playhouse` and 229 in `playhouse_ss` using temporary policy files. Each scan reported one matching DOM ancestry loop body in the AI Locator and Preview. Their iteration bounds differ. The two scheduled-flow loops did not match. The pilot retained the existing Vue and `target` selection exclusions.
 - The Windows build passed 28 CLI regressions, rustfmt, and Clippy. The tool-adapter integration and seven distribution tests passed. A standalone `--rules maintainable/fallback-order` run with an empty PATH selected two TS files and reported zero warnings by default. Enabling the rule reported the two expected warnings in the flagged file. The skill validator passed.
 - For `0.3.1-init.1`, both skills passed validation, both ZIPs passed integrity and source-payload checks, and their user-level installation receipts matched the ZIP hashes. Codex app-server discovery listed `mc-init` and `maintainable-code` as enabled. Draft selection verified Git and project exclusions and preserved an existing policy when an invalid draft was rejected. The installed checker found zero issues in the native baseline and four existing Ruff `E731` findings in `scripts/install.py` when Python lint was selected. Read permissions on older ZIPs blocked the shared checksum index refresh.
 - Project declarations and adapters passed `sh scripts/build.sh` on Windows with 28 CLI regressions, rustfmt, Clippy and the release build. The opt-in CLI test passed with dependency-cruiser 18.8.0, jscpd 5.4.3, Ruff 0.14.3 and gofmt from Go 1.26.5. It verified TS aliases and cycles, scoped exclusions, duplicate detection across the three supported language groups, Python bypass auditing, and Go formatting. All seven distribution tests passed.

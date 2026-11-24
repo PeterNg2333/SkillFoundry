@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use super::{SourceFile, ast::SyntaxNode};
 use crate::{
-    config::{Policy, RULES},
-    report::{Bypass, Directive, Report, source_location},
+    config::{Policy, RULES, SIMILAR_LOOPS},
+    report::{Bypass, Directive, Finding, Report, source_location},
 };
 
 struct LocalBypass<'a> {
@@ -12,6 +12,33 @@ struct LocalBypass<'a> {
     rule: &'a str,
     reason: &'a str,
     used: bool,
+}
+
+pub struct LoopBypass {
+    pub target: Range<usize>,
+    pub line: usize,
+    pub reason: String,
+    pub used: bool,
+    offset: usize,
+    column: usize,
+}
+
+impl LoopBypass {
+    pub fn finish(self, file: &str, report: &mut Report) {
+        if !self.used {
+            report.diagnostics.push(Finding {
+                file: file.to_owned(),
+                line: self.line,
+                column: self.column,
+                severity: "error".to_owned(),
+                rule: "maintainable/unused-bypass".to_owned(),
+                message: format!("Remove the unused @bypass for {SIMILAR_LOOPS}."),
+                origin: "static",
+                related: None,
+                offset: self.offset,
+            });
+        }
+    }
 }
 
 fn bypass_target(node: &SyntaxNode<'_>, source: &str) -> Option<Range<usize>> {
@@ -44,8 +71,9 @@ pub fn check(
     inspect_directives: bool,
     first_finding: usize,
     report: &mut Report,
-) {
+) -> Vec<LoopBypass> {
     let mut bypasses = Vec::new();
+    let mut loop_bypasses = Vec::new();
     for node in root.dfs().filter(|node| node.kind() == "comment") {
         let range = node.range();
         let comment = &input.text[range.clone()];
@@ -73,6 +101,20 @@ pub fn check(
                         && !reason.is_empty()
                         && let Some(target) = bypass_target(&node, input.text)
                     {
+                        if rule == SIMILAR_LOOPS {
+                            if style_policy.is_some_and(|policy| policy.severity(rule).is_some()) {
+                                let (line, column) = source_location(input.text, offset);
+                                loop_bypasses.push(LoopBypass {
+                                    target,
+                                    line,
+                                    column,
+                                    reason: reason.to_owned(),
+                                    used: false,
+                                    offset,
+                                });
+                            }
+                            continue;
+                        }
                         bypasses.push(LocalBypass {
                             offset,
                             target,
@@ -145,4 +187,5 @@ pub fn check(
             }
         }
     }
+    loop_bypasses
 }

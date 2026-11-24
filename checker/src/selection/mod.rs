@@ -1,4 +1,5 @@
 mod docker;
+pub mod structure;
 
 use std::{
     fs,
@@ -10,8 +11,9 @@ use globset::GlobMatcher;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::Serialize;
 
-use crate::config::{Resolved, glob};
+use crate::config::{FileStructure, Resolved, glob};
 use docker::DockerIgnore;
+use structure::{Scan, StructureSelection};
 
 #[derive(Serialize)]
 pub struct File {
@@ -34,10 +36,17 @@ struct Selector<'a> {
     root: &'a Path,
     settings: &'a Resolved,
     ignores: Vec<GlobMatcher>,
-    extensions: Vec<String>,
     requests: Vec<String>,
-    docker: DockerIgnore,
+    mode: Mode<'a>,
     result: Selection,
+}
+
+enum Mode<'a> {
+    Sources {
+        extensions: Vec<String>,
+        docker: DockerIgnore,
+    },
+    Structure(Scan<'a>),
 }
 
 pub(crate) fn normalized(path: &Path) -> PathBuf {
@@ -55,6 +64,34 @@ pub(crate) fn normalized(path: &Path) -> PathBuf {
 }
 
 pub fn select(root: &Path, requests: &[PathBuf], settings: &Resolved) -> Result<Selection> {
+    let mut extensions: Vec<_> = settings.settings.extensions.keys().cloned().collect();
+    extensions.sort_by_key(|extension| (std::cmp::Reverse(extension.len()), extension.clone()));
+    let mode = Mode::Sources {
+        extensions,
+        docker: DockerIgnore::load(root)?,
+    };
+    Ok(walk(root, requests, settings, mode)?.result)
+}
+
+pub fn select_structure(
+    root: &Path,
+    requests: &[PathBuf],
+    settings: &Resolved,
+    policy: &FileStructure,
+) -> Result<StructureSelection> {
+    let selector = walk(root, requests, settings, Mode::Structure(Scan::new(policy)))?;
+    let Mode::Structure(scan) = selector.mode else {
+        unreachable!("walk retains its mode");
+    };
+    Ok(scan.finish(selector.result, &selector.requests))
+}
+
+fn walk<'a>(
+    root: &'a Path,
+    requests: &[PathBuf],
+    settings: &'a Resolved,
+    mode: Mode<'a>,
+) -> Result<Selector<'a>> {
     let mut scope = Vec::new();
     for request in requests {
         let absolute = normalized(&root.join(request));
@@ -68,28 +105,28 @@ pub fn select(root: &Path, requests: &[PathBuf], settings: &Resolved) -> Result<
     if scope.iter().any(String::is_empty) {
         scope.clear();
     }
-    let mut extensions: Vec<_> = settings.settings.extensions.keys().cloned().collect();
-    extensions.sort_by_key(|extension| (std::cmp::Reverse(extension.len()), extension.clone()));
     let mut selector = Selector {
         root,
         settings,
         requests: scope,
-        extensions,
+        mode,
         ignores: settings
             .settings
             .ignore
             .iter()
             .map(|pattern| glob(pattern))
             .collect::<Result<_>>()?,
-        docker: DockerIgnore::load(root)?,
         result: Selection::default(),
     };
     selector.visit("", &[])?;
-    Ok(selector.result)
+    Ok(selector)
 }
 
 impl Selector<'_> {
     fn skip(&mut self, path: &str, reason: &'static str) {
+        if let Mode::Structure(scan) = &mut self.mode {
+            scan.skip(path);
+        }
         self.result.skipped.push(Skipped {
             path: path.to_owned(),
             reason,
@@ -97,6 +134,11 @@ impl Selector<'_> {
     }
 
     fn visit(&mut self, relative: &str, inherited: &[Gitignore]) -> Result<()> {
+        if let Mode::Structure(scan) = &self.mode
+            && !scan.includes(relative)
+        {
+            return Ok(());
+        }
         let absolute = self.root.join(relative);
         let metadata = fs::symlink_metadata(&absolute)
             .with_context(|| format!("inspect {}", absolute.display()))?;
@@ -131,19 +173,31 @@ impl Selector<'_> {
             self.skip(relative, "gitignore");
             return Ok(());
         }
-        if self.docker.excludes(relative) {
+        if let Mode::Sources { docker, .. } = &self.mode
+            && docker.excludes(relative)
+        {
+            let continue_directory = metadata.is_dir() && docker.has_negations;
             self.skip(relative, "dockerignore");
-            if !metadata.is_dir() || !self.docker.has_negations {
+            if !continue_directory {
                 return Ok(());
             }
+        }
+        if let Mode::Structure(scan) = &mut self.mode
+            && (metadata.is_dir() || metadata.is_file())
+            && !scan.inspect(relative, metadata.is_dir(), &mut self.result)
+        {
+            return Ok(());
         }
         if metadata.is_dir() {
             return self.visit_directory(relative, inherited);
         }
+        let Mode::Sources { extensions, .. } = &self.mode else {
+            return Ok(());
+        };
         if !metadata.is_file() {
             return Ok(());
         }
-        for extension in &self.extensions {
+        for extension in extensions {
             if !relative.to_lowercase().ends_with(extension) {
                 continue;
             }

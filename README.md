@@ -26,17 +26,20 @@ sh scripts/build.sh
 skills/maintainable-code/bin/maintainable-check.exe capabilities --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks dependencies,json --json
+skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks file-structure
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --rules maintainable/single-use-helper -- src/routes
 skills/maintainable-code/bin/maintainable-check.exe select --root /path/to/project --json
 ```
 
-The executable is named `maintainable-check` on Linux/macOS. It applies extension routing, `checkignore.json`, scoped Git ignores and the root Docker ignore before checking. It runs native checks by default. Use `--checks` to run only the needed subset.
+The executable is named `maintainable-check` on Linux/macOS. It reads `checkignore.json` or falls back to `check.json`. Source checks apply the project policy, scoped Git ignores, the root Docker ignore and extension routing. The default run includes native checks and enforces `fileStructure` when declared. Use `--checks` to run only the needed subset.
 
 In the skill, use `$maintainable-code /check single-use helpers in src/routes` for a scoped check and `$maintainable-code /help` for examples. Use `/add-smell` to record a rule or `/review-smells` to request contextual review. See [code smell rules and examples](skills/maintainable-code/references/smells.md).
 
 Native coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Opt in to JS/TS dependency boundaries with dependency-cruiser, duplication with jscpd, Python lint with Ruff, and Go formatting with gofmt. The checker reports missing tools and incomplete coverage. Run project type checking separately.
 
 Use [`checkignore.json` as the project policy declaration](skills/maintainable-code/references/checks.md#configuration-and-selection). `styleNotes` explains the conventions to agents, `rules` enforces native style, and `bypasses` records scoped exceptions with reasons. `externalChecks` adds optional checks to the project's default run. See the [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).
+
+`fileStructure` declares nested directories, accepted file types and ignored subtrees in the same policy file. Run `check --checks file-structure` to show the declared tree and report violations, or add `--json` for tooling. [File structure configuration](skills/maintainable-code/references/checks.md#file-structure)
 
 Run `$mc-init` to set up `checkignore.json` from a project's existing conventions. Run `$mc-init questionnaire` to decide languages, style, and exclusions interactively. When both skills are installed together, `$maintainable-code /init [auto|questionnaire]` uses the same workflow. SkillFoundry's [own declaration](checkignore.json) uses the embedded and Git exclusions. Rust and shell checks run through the repository's shell entry points. Python lint is available through `--checks python`.
 

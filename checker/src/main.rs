@@ -70,16 +70,25 @@ fn run() -> Result<i32> {
                 checks.extend(defaults.iter().map(|name| (*name).to_owned()));
                 if rules.is_empty() {
                     checks.extend(settings.settings.external_checks.iter().cloned());
+                    if settings.settings.file_structure.is_some() {
+                        checks.push(checks::FILE_STRUCTURE.to_owned());
+                    }
                 }
             }
             (paths, list, checks, rules)
         }
         Command::Capabilities => unreachable!(),
     };
-    let selected = selection::select(&root, &paths, &settings)?;
+    let structure_only =
+        !list && matches!(names.as_slice(), [name] if name == checks::FILE_STRUCTURE);
+    let selected = if structure_only {
+        selection::Selection::default()
+    } else {
+        selection::select(&root, &paths, &settings)?
+    };
     let mut result = report::Report::new(root.display().to_string(), selected, &settings, list);
     if !list {
-        checks::run(&root, &settings, &names, &rules, &mut result)?;
+        checks::run(&root, &paths, &settings, &names, &rules, &mut result)?;
         result.apply_project_bypasses(&settings.settings.bypasses)?;
     }
     result.rule_filter = rules;
@@ -92,6 +101,9 @@ fn run() -> Result<i32> {
             for file in &result.files {
                 writeln!(output, "{} {}", file.kind, file.path)?;
             }
+        }
+        if structure_only && let Some(policy) = &settings.settings.file_structure {
+            write!(output, "{}", selection::structure::tree(policy))?;
         }
         for finding in &result.diagnostics {
             writeln!(

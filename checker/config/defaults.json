@@ -34,6 +34,7 @@
     "maintainable/long-jsx-class-name": "off",
     "maintainable/playwright-style-assertion": "off",
     "maintainable/complex-mapped-button": "off",
+    "maintainable/similar-loops": "off",
     "max-depth": [
       "warn",
       2
@@ -54,6 +55,7 @@
   "overrides": [],
   "externalChecks": [],
   "pythonRules": ["E4", "E7", "E9", "F"],
+  "loopSimilarity": {"minSimilarity": 65, "minBodyTokens": 12},
   "duplication": {
     "severity": "warn"
   }
