@@ -1,7 +1,6 @@
 """Record one Interact run and update its read-only repository activity page."""
 
 import argparse
-import html
 import json
 import posixpath
 import subprocess
@@ -11,7 +10,7 @@ from pathlib import Path
 
 
 def timestamp():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def replace_file(path, content):
@@ -72,7 +71,7 @@ def begin(root, checker):
     return {"run": str(run), "view": str(run.with_suffix(".html")), "items": items}
 
 
-def record(run, number, state, detail):
+def record(run, number, state, detail, test=None):
     if not detail.strip():
         raise ValueError("Provide a detail or verification result for the event.")
     data = json.loads(run.read_text(encoding="utf-8"))
@@ -90,76 +89,47 @@ def record(run, number, state, detail):
     if state not in transitions[item["state"]]:
         raise ValueError(f"Cannot change item {number} from {item['state']} to {state}.")
     item["state"] = state
-    item["events"].append({"time": timestamp(), "state": state, "detail": detail})
+    event = {"time": timestamp(), "state": state, "detail": detail}
+    if test is not None:
+        event["test"] = test
+    item["events"].append(event)
     save(run, data)
     return {"item": number, "state": state, "view": str(run.with_suffix(".html"))}
 
 
-def item_html(item):
-    escape = html.escape
-    title = escape(f"@{item['kind']} {item['text']}")
-    location = escape(f"{item['file']}:{item['line']}:{item['column']}")
-    events = "".join(
-        f"<li><time>{escape(event['time'])}</time> "
-        f"<strong>{escape(event['state'])}</strong><pre>{escape(event['detail'])}</pre></li>"
-        for event in item["events"]
-    )
-    return (
-        f"<article><details><summary><span>{escape(item['state'])}</span> "
-        f"<code>{title}</code></summary><p>{location}</p>"
-        f"<ol>{events}</ol></details></article>"
-    )
-
-
 def save(run, data):
     replace_file(run, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
-    current = data["items"]
-    groups = {}
-    for item in current:
-        groups.setdefault(item["group"], []).append(item)
-    sections = "".join(
-        f"<section><h2>{html.escape(group)}</h2>{''.join(map(item_html, items))}</section>"
-        for group, items in groups.items()
-    )
+    view = run.with_suffix(".html")
+    template = Path(__file__).with_name("interact_board.html").read_text(encoding="utf-8")
+    if not view.exists() or view.read_text(encoding="utf-8") != template:
+        replace_file(view, template)
     history = []
     for old_run in sorted(run.parent.glob("run-*.json"), reverse=True):
         if old_run == run:
             continue
         old = json.loads(old_run.read_text(encoding="utf-8"))
-        history.extend(item for item in old["items"] if item["state"] == "Cleared")
-    counts = " · ".join(
-        f"{state}: {count}"
-        for state in ("Pending", "Running", "Needs input", "Verification failed", "Verified", "Cleared")
-        if (count := sum(item["state"] == state for item in current))
-    )
-    refresh = (
-        '<meta http-equiv="refresh" content="8">'
-        if any(item["state"] in {"Pending", "Running", "Verified"} for item in current)
-        else ""
-    )
-    view = f"""<!doctype html>
-<html lang="en">
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-{refresh}
-<title>Interact activity</title>
-<style>
-:root {{color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif}}
-body {{max-width: 68rem; margin: 2rem auto; padding: 0 1rem}}
-header {{border-bottom: 1px solid GrayText; overflow-wrap: anywhere}}
-h2 {{font-size: 1.1rem; margin-top: 1.5rem; overflow-wrap: anywhere}}
-article {{padding: .55rem .25rem; border-bottom: 1px solid color-mix(in srgb, CanvasText 20%, Canvas)}}
-summary {{cursor: pointer; overflow-wrap: anywhere}}
-summary span {{font-weight: 700; margin-right: .5rem}}
-pre {{white-space: pre-wrap; overflow-wrap: anywhere}}
-time {{font-size: .85rem}}
-</style>
-<header><h1>Interact activity</h1><p>{html.escape(data["root"])}</p>
-<p>{html.escape(counts or "No pending directives")} · {data["started"]}</p></header>
-<main>{sections or "<p>No actionable directives were discovered.</p>"}
-<section><h2>Previously cleared</h2>{''.join(map(item_html, history)) or "<p>No earlier results.</p>"}</section>
-</main>
-</html>"""
-    replace_file(run.with_suffix(".html"), view)
+        history.extend({**item, "run": old_run.stem}
+                       for item in old["items"] if item["state"] == "Cleared")
+    snapshot = json.dumps({**data, "history": history}, ensure_ascii=True)
+    replace_file(run.with_suffix(".data.js"), f"window.updateInteractBoard({snapshot});\n")
+
+
+def test_result(args):
+    values = (args.test_command, args.test_status, args.test_exit_code)
+    if all(value is None for value in values):
+        return None
+    if not args.test_command or not args.test_command.strip() or not args.test_status:
+        raise ValueError("A test result needs both --test-command and --test-status.")
+    if args.test_status == "skipped":
+        if args.test_exit_code is not None:
+            raise ValueError("A skipped test does not have an exit code.")
+    elif args.test_exit_code is None or (args.test_exit_code == 0) != (args.test_status == "passed"):
+        raise ValueError("The test exit code must match its passed or failed status.")
+    return {
+        "command": args.test_command,
+        "status": args.test_status,
+        "exitCode": args.test_exit_code,
+    }
 
 
 def main():
@@ -173,12 +143,15 @@ def main():
     event.add_argument("--item", type=int, required=True)
     event.add_argument("--state", required=True)
     event.add_argument("--detail", required=True)
+    event.add_argument("--test-command")
+    event.add_argument("--test-status", choices=("passed", "failed", "skipped"))
+    event.add_argument("--test-exit-code", type=int)
     args = parser.parse_args()
     try:
         if args.command == "start":
             result = begin(args.root.resolve(), args.checker)
         else:
-            result = record(args.run, args.item, args.state, args.detail)
+            result = record(args.run, args.item, args.state, args.detail, test_result(args))
     except (OSError, ValueError, KeyError) as error:
         parser.exit(2, f"Interact: {error}\n")
     print(json.dumps(result))

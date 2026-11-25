@@ -19,7 +19,15 @@
    python <skill>/scripts/interact_trace.py event --run <run> --item 1 --state Running --detail "Locating the state owner and callers."
    ```
 
-   Replace the item number with the one returned from discovery. The view refreshes from an atomically replaced local HTML file. Run JSON and the HTML are stored under this worktree's Git metadata. Each new view includes previously cleared items. Run files belong to the agent invocation that created them and receive sequential updates from it.
+   Replace the item number with the one returned from discovery. The board updates from an atomically replaced local snapshot without reloading the page. Run JSON, the board, and its snapshot are stored together under the worktree's Git metadata. Open the HTML in a browser to see pending, in-progress, needs-attention, and cleared directives. Each new board also includes earlier cleared items. Run files belong to the agent invocation that created them and receive sequential updates from it.
+
+   For a test result, attach its actual command, outcome, and exit code to the same event:
+
+   ```text
+   python <skill>/scripts/interact_trace.py event --run <run> --item 1 --state Verified --detail "Late responses cannot replace the active floor. One test passed." --test-command "python -m unittest -v" --test-status passed --test-exit-code 0
+   ```
+
+   Use `failed` with the actual nonzero exit code. For unavailable coverage, record `skipped` without an exit code and explain the reason in the detail. Identify the suite or working directory in the command when several packages have identical commands. The Test results section shows the latest result per command for the current run, and each directive retains its complete activity history.
 
 ## Source notes and master specs
 
@@ -76,4 +84,4 @@ If a decision materially changes behavior or write scope, leave a short `@questi
 - For code changes and tests, run the repository's established verification tools. Use [verification.md](verification.md#run-and-report-checks) for evidence expectations. Include actual changed files and commands with results. Record verification failures as `Verification failed` and leave incomplete directives in place.
 - Record a completed item's evidence with an event in state `Verified`. Re-read the original location and remove only the exact completed directive, plus any resolved question/reply specific to it. Preserve the spec's intent, scope, acceptance criteria, and outstanding work. Record `Cleared` after the source edit succeeds.
 - If the note changed during execution, leave the new text in place and record why it is pending. If a previous run stopped between verification and cleanup, inspect its evidence and current source before repeating work.
-- Give the user the local activity page and a short account of remaining directives. The page displays state, original source position, and the recorded sequence of decisions, edits, and checks.
+- Give the user the local board and a short account of remaining directives. Cards open their original source position, decisions, edits, and individual check results.

@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interact board</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #101319; --panel: #171c25; --card: #202733; --line: #323c4c;
+  --text: #f1f3f7; --muted: #b0bbcc; --blue: #a6c5ff;
+  --green: #91e2bb; --amber: #ffd094; --red: #ffacaa;
+  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+h1, h2, p { margin: 0; }
+code, pre { font: 12px/1.65 Consolas, ui-monospace, monospace; overflow-wrap: anywhere; }
+.shell { width: min(100%, 1440px); margin-inline: auto; padding: 28px clamp(16px, 3vw, 42px) 36px; }
+.masthead { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+.repo { color: var(--blue); font-weight: 650; overflow-wrap: anywhere; }
+h1 { font-size: clamp(26px, 4vw, 39px); font-weight: 670; letter-spacing: -.035em; }
+.sync { color: var(--muted); display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.sync::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+.sync[data-ok="true"]::before { background: var(--green); }
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-block: 22px 24px; align-items: start; }
+.lane { min-height: 156px; padding: 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.lane-head { display: flex; align-items: center; gap: 8px; margin: 2px 2px 11px; }
+.lane-head h2, .test-head h2 { font-size: 15px; font-weight: 650; }
+.lane-head::before { content: ""; width: 3px; height: 16px; border-radius: 4px; background: var(--muted); }
+.lane[data-lane="progress"] .lane-head::before { background: var(--blue); }
+.lane[data-lane="attention"] .lane-head::before { background: var(--amber); }
+.lane[data-lane="cleared"] .lane-head::before { background: var(--green); }
+.count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cards { display: grid; gap: 8px; }
+.card { width: 100%; text-align: left; display: grid; gap: 6px; color: var(--text); padding: 11px; background: var(--card); border: 1px solid var(--line); border-radius: 9px; }
+.card:hover, .result-button:hover { border-color: var(--blue); }
+.card-top { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.tag { color: var(--blue); }
+.card-title { font-weight: 600; overflow-wrap: anywhere; }
+.meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.result, .state { font-size: 12px; font-weight: 650; }
+.result { color: var(--muted); }
+.result[data-status="passed"] { color: var(--green); }
+.result[data-status="failed"] { color: var(--red); }
+.state { color: var(--amber); }
+.empty { color: var(--muted); padding: 10px 2px; font-size: 13px; }
+.tests { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 13px; }
+.test-head { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; margin: 0 2px 10px; flex-wrap: wrap; }
+.test-summary { color: var(--muted); font-size: 13px; }
+.result-list { display: grid; gap: 6px; }
+.result-button { width: 100%; display: grid; grid-template-columns: 65px minmax(0, 1fr) minmax(135px, .72fr); text-align: left; align-items: center; gap: 13px; padding: 8px 10px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+dialog { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(100%, 470px); max-width: none; height: 100%; max-height: none; border: 0; border-left: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 22px; }
+dialog::backdrop { background: rgb(7 10 14 / .62); }
+.detail-head { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.close { color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px; }
+.detail-title { font-size: 22px; line-height: 1.3; margin: 8px 0; overflow-wrap: anywhere; }
+.directive-source { margin: 8px 0 18px; }
+.events { list-style: none; margin: 9px 0; padding: 0; }
+.events li { border-top: 1px solid var(--line); padding-block: 10px; }
+.events strong { margin-right: 8px; }
+pre { white-space: pre-wrap; margin: 6px 0 0; }
+@media (max-width: 860px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 475px) {
+  .board { grid-template-columns: 1fr; }
+  .lane { min-height: auto; }
+  .result-button { grid-template-columns: 56px minmax(0, 1fr); gap: 6px; }
+  .result-button .meta { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="masthead">
+    <div><p class="repo" id="repo">Interact</p><h1>Repository activity</h1></div>
+    <p class="sync" id="sync" role="status">Connecting to run</p>
+  </header>
+  <div class="board" id="board" aria-label="Directive board"></div>
+  <section class="tests" aria-labelledby="test-heading">
+    <div class="test-head">
+      <h2 id="test-heading">Test results</h2>
+      <p class="test-summary" id="test-summary"></p>
+    </div>
+    <div class="result-list" id="results"></div>
+  </section>
+</main>
+<dialog id="details" aria-labelledby="detail-title">
+  <div class="detail-head">
+    <span class="tag" id="detail-tag"></span>
+    <form method="dialog"><button class="close" aria-label="Close details">Close</button></form>
+  </div>
+  <h2 class="detail-title" id="detail-title"></h2>
+  <p class="meta" id="detail-source"></p>
+  <p class="directive-source" id="detail-group"></p>
+  <h2>Activity</h2>
+  <ol class="events" id="events"></ol>
+</dialog>
+<script>
+const lanes = [
+  { id: "pending", label: "Pending", states: ["Pending"] },
+  { id: "progress", label: "In progress", states: ["Running", "Verified"] },
+  { id: "attention", label: "Needs attention", states: ["Needs input", "Verification failed"] },
+  { id: "cleared", label: "Cleared", states: ["Cleared"] },
+];
+const board = document.getElementById("board");
+const results = document.getElementById("results");
+const details = document.getElementById("details");
+const sync = document.getElementById("sync");
+const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+let items = new Map();
+let selected = null;
+let previous = "";
+
+function element(name, className, value) {
+  const node = document.createElement(name);
+  if (className) node.className = className;
+  if (value) node.textContent = value;
+  return node;
+}
+
+function latestTests(item) {
+  const latest = new Map();
+  for (const event of item.events) {
+    if (event.test) latest.set(event.test.command, event);
+  }
+  return [...latest.values()];
+}
+
+function testStatus(test) {
+  const label = element("span", "result", test.status);
+  label.dataset.status = test.status;
+  return label;
+}
+
+function showDetails(item) {
+  document.getElementById("detail-tag").textContent = `@${item.kind} · ${item.state}`;
+  document.getElementById("detail-title").textContent = item.text;
+  document.getElementById("detail-source").textContent = `${item.file}:${item.line}:${item.column}`;
+  document.getElementById("detail-group").textContent = item.group;
+  const events = item.events.map((event) => {
+    const row = element("li");
+    row.append(element("strong", "", event.state), element("time", "meta", time.format(new Date(event.time))));
+    row.append(element("pre", "", event.detail));
+    if (event.test) {
+      const command = element("p", "meta", event.test.command);
+      if (event.test.exitCode !== null) command.append(` · exit ${event.test.exitCode}`);
+      row.append(testStatus(event.test), command);
+    }
+    return row;
+  });
+  document.getElementById("events").replaceChildren(...(events.length ? events : [
+    element("li", "meta", "Waiting to start."),
+  ]));
+}
+
+function card(id, item, lane) {
+  const button = element("button", "card");
+  button.type = "button";
+  button.dataset.item = id;
+  const top = element("span", "card-top");
+  top.append(element("code", "tag", `@${item.kind}`));
+  if (lane.id === "attention" || item.state === "Verified") {
+    top.append(element("span", "state", item.state));
+  }
+  button.append(top, element("span", "card-title", item.text), element("span", "meta", item.group));
+  const tests = latestTests(item);
+  if (tests.length) button.append(testStatus(tests.at(-1).test));
+  return button;
+}
+
+function showTests(current) {
+  const latest = new Map();
+  for (const [id, item] of current) {
+    for (const event of latestTests(item)) {
+      const command = event.test.command;
+      const previous = latest.get(command);
+      if (!previous || event.time >= previous.event.time) latest.set(command, { id, item, event });
+    }
+  }
+  const counts = { passed: 0, failed: 0, skipped: 0 };
+  const rows = [...latest.values()].map(({ id, item, event }) => {
+    counts[event.test.status]++;
+    const button = element("button", "result-button");
+    button.type = "button";
+    button.dataset.item = id;
+    button.append(testStatus(event.test), element("code", "", event.test.command),
+      element("span", "meta", `@${item.kind} · ${item.group}`));
+    return button;
+  });
+  document.getElementById("test-summary").textContent =
+    `${counts.passed} passed · ${counts.failed} failed · ${counts.skipped} skipped`;
+  results.replaceChildren(...(rows.length ? rows : [
+    element("p", "empty", "Test commands and outcomes appear here as they finish."),
+  ]));
+}
+
+window.updateInteractBoard = (snapshot) => {
+  sync.textContent = "Live updates";
+  sync.dataset.ok = "true";
+  const signature = JSON.stringify(snapshot);
+  if (previous === signature) return;
+  previous = signature;
+  document.getElementById("repo").textContent = snapshot.root.split(/[\\/]/).filter(Boolean).at(-1) || snapshot.root;
+  const current = snapshot.items.map((item) => [`current:${item.item}`, item]);
+  const history = snapshot.history.map((item) => [`${item.run}:${item.item}`, item]);
+  items = new Map([...current, ...history]);
+  const columns = lanes.map((lane) => {
+    const section = element("section", "lane");
+    section.dataset.lane = lane.id;
+    const entries = [...items].filter(([, item]) => lane.states.includes(item.state));
+    const head = element("header", "lane-head");
+    head.append(element("h2", "", lane.label), element("span", "count", String(entries.length)));
+    const cards = element("div", "cards");
+    cards.append(...(entries.length ? entries.map(([id, item]) => card(id, item, lane)) : [
+      element("p", "empty", "No directives"),
+    ]));
+    section.append(head, cards);
+    return section;
+  });
+  board.replaceChildren(...columns);
+  showTests(current);
+  if (details.open && items.has(selected)) showDetails(items.get(selected));
+};
+
+function openItem(event) {
+  const trigger = event.target.closest("button[data-item]");
+  if (!trigger || !items.has(trigger.dataset.item)) return;
+  selected = trigger.dataset.item;
+  showDetails(items.get(selected));
+  details.showModal();
+}
+board.addEventListener("click", openItem);
+results.addEventListener("click", openItem);
+
+function refresh() {
+  const data = new URL(location.href);
+  data.pathname = data.pathname.replace(/\.html$/, ".data.js");
+  data.search = `v=${Date.now()}`;
+  const reader = element("script");
+  reader.src = data.href;
+  const next = () => {
+    reader.remove();
+    window.setTimeout(refresh, 1200);
+  };
+  reader.addEventListener("load", next);
+  reader.addEventListener("error", () => {
+    sync.textContent = "Waiting for run data";
+    sync.dataset.ok = "false";
+    next();
+  });
+  document.head.append(reader);
+}
+refresh();
+</script>
+</body>
+</html>

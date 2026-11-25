@@ -8,6 +8,7 @@
 - Exempt inline exported functions and const bindings from single-use helper diagnostics.
 - Add optional `directives` analysis for `@impl`, `@refactor`, and `@check` comments, and audit skipped findings in the bypass report.
 - Add `/interact` for repository work directives, including `@add-test` and Markdown master specs. Report verified and cleared work in a local activity view.
+- Show Interact work on a live board, with structured test outcomes and an activity history per directive.
 
 ## 0.2.0 - 2026-11-18
 
