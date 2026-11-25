@@ -35,6 +35,8 @@ The executable is named `maintainable-check` on Linux/macOS. It reads `checkigno
 
 In the skill, use `$maintainable-code /check single-use helpers in src/routes` for a scoped check and `$maintainable-code /help` for examples. Use `/add-smell` to record a rule or `/review-smells` to request contextual review. See [code smell rules and examples](skills/maintainable-code/references/smells.md).
 
+Use `$maintainable-code /interact` to find work requests in JS/TS comments and Markdown-formatted `.spec` files, execute ready items, and open a read-only activity report. This workflow uses Python 3.10+, Git, and the packaged checker. [Interact directives, policy, and completion evidence](skills/maintainable-code/references/interact.md)
+
 Native coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Opt in to JS/TS dependency boundaries with dependency-cruiser, duplication with jscpd, Python lint with Ruff, and Go formatting with gofmt. The checker reports missing tools and incomplete coverage. Run project type checking separately.
 
 Use [`checkignore.json` as the project policy declaration](skills/maintainable-code/references/checks.md#configuration-and-selection). `styleNotes` explains the conventions to agents, `rules` enforces native style, and `bypasses` records scoped exceptions with reasons. `externalChecks` adds optional checks to the project's default run. See the [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).

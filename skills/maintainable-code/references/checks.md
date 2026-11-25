@@ -56,7 +56,7 @@ maintainable-check check --root . --checks go,comments src
 | `python` | Python lint and syntax via Ruff |
 | `go-format` | Go formatting via gofmt |
 | `comments` | AST comment groups and optional presence rule for JS/TS/Go |
-| `directives` | Source locations and descriptions for `@impl`, `@refactor` and `@check` in JS/TS comments |
+| `directives` | Source locations and descriptions for [Interact directives](interact.md) in JS/TS comments and master specs |
 | `file-structure` | Declared directories, file names and file types from the project's `fileStructure` |
 
 Plain `check` runs the native default groups, any declared `fileStructure` and the project's `externalChecks`. Use `--checks` to choose exact groups. When `--rules` is supplied without `--checks`, check JavaScript and TypeScript only. Unknown or duplicate check and rule IDs fail. Reports state selected, checked and unchecked files, per-check applicability and coverage. `select` and `check --list` only list source selection.
@@ -187,7 +187,7 @@ Record pending work in JS/TS comments. Put each tag and its description on one l
 // @refactor Inline reserveStock into createOrder while preserving the transaction.
 ```
 
-The `directives` check returns the tag, its text and its location in source order. When the user asks the agent to carry out the work, use nearby `@check` notes as acceptance criteria. Remove completed directives after verifying the behavior. Keep pending directives that still describe unresolved work.
+The `directives` check returns the tag, its text and its location in source order. A `.spec` master can carry work for several files in its `## Work` section. Use `/interact` to process work requests, record `@add-test` and `@check` evidence, and clear completed items. [Interact workflow](interact.md)
 
 ## Reports and contextual review
 

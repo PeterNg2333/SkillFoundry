@@ -9,7 +9,7 @@ mod tools;
 mod ui;
 
 use crate::{
-    config::{RULES, Resolved, TOOL_CHECKS, validate_rule_filter},
+    config::{RULES, Resolved, TOOL_CHECKS, WORK_SPEC, WORK_TAGS, glob, validate_rule_filter},
     report::{CheckStatus, Report},
     selection,
 };
@@ -56,7 +56,8 @@ pub fn capabilities() -> Value {
         "externalChecks":{"dependency-boundaries":"dependency-cruiser","duplication":"jscpd","python":"ruff","go-format":"gofmt"},
         "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "termtree", "toml"],
         "unsupported":[{"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
-        "modelReview":{"implemented":false,"default":"off"}})
+        "modelReview":{"implemented":false,"default":"off"},
+        "workDirectives":WORK_TAGS})
 }
 
 pub fn validate(names: &[String]) -> Result<()> {
@@ -89,6 +90,12 @@ pub fn run(
     let mut counts = BTreeMap::new();
     let mut checked = BTreeSet::new();
     let mut loop_files = Vec::new();
+    let work = &settings.settings.work_directives;
+    let work_paths = work
+        .paths
+        .iter()
+        .map(|path| glob(path))
+        .collect::<Result<Vec<_>>>()?;
     for (file, kind) in report
         .files
         .iter()
@@ -103,8 +110,9 @@ pub fn run(
         let dependencies = manifest && selected("dependencies");
         let comments =
             matches!(kind.as_str(), "go" | "javascript" | "typescript") && selected("comments");
-        let directives =
-            matches!(kind.as_str(), "javascript" | "typescript") && selected("directives");
+        let directives = selected("directives")
+            && matches!(kind.as_str(), "javascript" | "typescript" | WORK_SPEC)
+            && (work_paths.is_empty() || work_paths.iter().any(|path| path.is_match(&file)));
         if !main && !dependencies && !comments && !directives {
             continue;
         }
@@ -119,6 +127,7 @@ pub fn run(
             match kind.as_str() {
                 "json" => manifests::json(&file, source, report),
                 "toml" => manifests::toml(&file, source, report),
+                WORK_SPEC => directives::check_spec(&file, source, work, report),
                 "go" => ast::check_go(
                     &file,
                     source,

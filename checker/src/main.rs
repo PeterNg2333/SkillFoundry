@@ -84,7 +84,8 @@ fn run() -> Result<i32> {
     let selected = if structure_only {
         selection::Selection::default()
     } else {
-        selection::select(&root, &paths, &settings)?
+        let include_work_specs = !list && names.iter().any(|name| name == "directives");
+        selection::select(&root, &paths, &settings, include_work_specs)?
     };
     let mut result = report::Report::new(root.display().to_string(), selected, &settings, list);
     if !list {

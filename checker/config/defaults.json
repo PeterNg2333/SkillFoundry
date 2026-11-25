@@ -24,7 +24,8 @@
     ".pyi": "python",
     ".go": "go",
     ".mod": "gomod",
-    ".toml": "toml"
+    ".toml": "toml",
+    ".spec": "work-spec"
   },
   "rules": {
     "maintainable/single-use-helper": "error",

@@ -265,7 +265,7 @@ pub fn check(
             &root,
             input,
             inspect.then_some(&policy),
-            inspect_directives,
+            inspect_directives.then_some(&settings.work_directives),
             first_finding,
             report,
         )

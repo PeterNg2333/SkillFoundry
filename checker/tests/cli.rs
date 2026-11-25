@@ -424,6 +424,61 @@ fn lists_only_real_comment_directives_in_selected_files() {
 }
 
 #[test]
+fn finds_interact_work_without_selecting_specs_for_normal_checks() {
+    let project = Project::new(&[
+        (
+            "checkignore.json",
+            r#"{"workDirectives":{"paths":["src/**"]}}"#,
+        ),
+        (".gitignore", "src/ignored.spec\n"),
+        (
+            "src/floor.spec",
+            "# Floor selection\n@do Ignore lines outside Work.\n## Work\n```ts\n@add-test Ignore fenced examples.\n```\n@plan module FloorSelection\n@do-type FloorSelectionState\n@add-test Late responses cannot select a stale floor.\n## Notes\n@review Ignore later sections.\n",
+        ),
+        (
+            "src/hook.ts",
+            "// @do-hook useFloorSelection -- Use the existing store.\n// @spec ./floor.spec\n\nconst note = '// @fix Ignore string literals.';\n",
+        ),
+        ("src/ignored.spec", "## Work\n@fix Ignored.\n"),
+        ("outside.spec", "## Work\n@fix Outside the work scope.\n"),
+    ]);
+    let normal = project.success(&["check", "--json"], true);
+    assert_eq!(normal["directives"], json!([]));
+    assert!(
+        normal["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|file| !file["path"].as_str().unwrap().ends_with(".spec"))
+    );
+
+    let report = project.success(&["check", "--json", "--checks", "directives"], true);
+    let actual: Vec<_> = report["directives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|directive| {
+            (
+                directive["file"].as_str().unwrap(),
+                directive["line"].as_u64().unwrap(),
+                directive["kind"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            ("src/floor.spec", 7, "plan"),
+            ("src/floor.spec", 8, "do-type"),
+            ("src/floor.spec", 9, "add-test"),
+            ("src/hook.ts", 1, "do-hook"),
+            ("src/hook.ts", 2, "spec"),
+        ]
+    );
+    assert_eq!(report["checks"][0]["files"], 2);
+}
+
+#[test]
 fn matches_moby_docker_reference_patterns() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/docker-ignore.json")).unwrap();

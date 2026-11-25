@@ -7,6 +7,7 @@
 - Report private JS/TS helpers with one direct call site as errors. Inline them or document a statement-scoped `@bypass` when a separate function owns a meaningful responsibility.
 - Exempt inline exported functions and const bindings from single-use helper diagnostics.
 - Add optional `directives` analysis for `@impl`, `@refactor`, and `@check` comments, and audit skipped findings in the bypass report.
+- Add `/interact` for repository work directives, including `@add-test` and Markdown master specs. Report verified and cleared work in a local activity view.
 
 ## 0.2.0 - 2026-11-18
 

@@ -13,7 +13,7 @@ The runtime is one Rust executable with embedded native checks and optional adap
 | `checker/src/checks/javascript.rs` | Structural rules, exports and import organization |
 | `checker/src/checks/semantics.rs` | Oxc syntax, binding mutation, single-use helpers and type-only imports |
 | `checker/src/checks/loop_similarity.rs` | Cross-file fingerprints and local import paths for similar loop bodies |
-| `checker/src/checks/directives.rs` | JS/TS comment directives, statement-scoped bypasses and their audit entries |
+| `checker/src/checks/directives.rs` | JS/TS comment directives, master-spec work sections, and audited statement-scoped bypasses |
 | `checker/src/checks/ast.rs` | Native grammar parsing, Go inspection and comment groups |
 | `checker/src/checks/metrics.rs` | Nesting, branch complexity and source-line measurements |
 | `checker/src/checks/manifests.rs` | JSON/TOML syntax and declared dependency counts |
@@ -21,7 +21,7 @@ The runtime is one Rust executable with embedded native checks and optional adap
 | `checker/src/report.rs` | Findings, locations, metrics and JSON envelope |
 | `checker/config/`, `checker/rules/` | Embedded defaults and ast-grep YAML rules |
 | `checker/tests/` | CLI regressions and reference fixtures |
-| `skills/maintainable-code/` | Agent workflow and checking reference |
+| `skills/maintainable-code/` | Agent workflow, checking reference, and local Interact activity recorder |
 | `scripts/` | Shell build entry and standard-library Python ZIP distribution |
 
 Use one Cargo package. Add a crate or trait when an actual second consumer or implementation needs it. Keep lifetime-heavy Oxc and ast-grep types local to their adapters. Reports own their strings and numbers. A new rule should concentrate edits in its language owner, declarative rule file and regression fixture.
@@ -46,7 +46,7 @@ Tool checks use the selected file set. dependency-cruiser receives an exact path
 
 Exit codes are 0 for completed checks without errors, 1 for error findings, and 2 for invalid configuration, operational failures or incomplete requested tool checks. Warnings remain visible without failing the command. A list operation reports selection without claiming analysis. `--checks` runs only selected checks. Per-check status and checked/unchecked counts describe coverage.
 
-`--rules` narrows configurable JS/TS rule IDs while preserving project overrides and syntax validation. Statement-scoped JS/TS bypasses and file-scoped project bypasses preserve suppressed findings with their reasons. The optional `directives` check reports work comments as data for the skill to use when the user requests edits.
+`--rules` narrows configurable JS/TS rule IDs while preserving project overrides and syntax validation. Statement-scoped JS/TS bypasses and file-scoped project bypasses preserve suppressed findings with their reasons. The optional `directives` check reports work comments and directives under `## Work` in Markdown-formatted `.spec` files. It applies project `workDirectives` scope and tag filters in addition to source selection. Master specs are selected only for explicit directive checks, which leaves ordinary analysis coverage unchanged.
 
 - Syntax and local binding analysis do not replace project type checking.
 - The opt-in similar-loops rule compares JS/TS loop bodies only within the selected files. It reports both locations and optionally shows a relative import path of up to two edges. It does not resolve project aliases or Vue scripts.

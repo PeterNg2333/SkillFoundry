@@ -20,6 +20,7 @@ Use **20% coding, 70% checking, and 10% human review** as a default allocation o
 - `/help` shows the shortcut syntax, scope examples, and supported checks. Read [checks.md](references/checks.md) and [smells.md](references/smells.md) and answer without scanning the project.
 - `/init [auto|questionnaire]` sets up project policy. Use the [mc-init workflow](../mc-init/SKILL.md) for project inspection, policy choices, and verification.
 - `/check [description]` runs static checks. Read [checks.md](references/checks.md) to translate the description into project-relative paths, check IDs and rule IDs. With no description, run the project's default native check scope.
+- `/interact` discovers work directives in the current Git repository, carries out ready items, and records an activity page. Read [interact.md](references/interact.md) before starting.
 - `/add-smell [example or description]` records or updates a reusable smell in the source skill. Read [smells.md](references/smells.md) to choose a deterministic check or contextual review rule and record the evidence.
 - `/review-smells [scope]` explicitly requests read-only contextual review. Apply the criteria in [smells.md](references/smells.md) to the named files or feature.
 

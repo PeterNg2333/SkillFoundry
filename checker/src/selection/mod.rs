@@ -11,7 +11,7 @@ use globset::GlobMatcher;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::Serialize;
 
-use crate::config::{FileStructure, Resolved, glob};
+use crate::config::{FileStructure, Resolved, WORK_SPEC, glob};
 use docker::DockerIgnore;
 use structure::{Scan, StructureSelection};
 
@@ -63,8 +63,19 @@ pub(crate) fn normalized(path: &Path) -> PathBuf {
     result
 }
 
-pub fn select(root: &Path, requests: &[PathBuf], settings: &Resolved) -> Result<Selection> {
-    let mut extensions: Vec<_> = settings.settings.extensions.keys().cloned().collect();
+pub fn select(
+    root: &Path,
+    requests: &[PathBuf],
+    settings: &Resolved,
+    include_work_specs: bool,
+) -> Result<Selection> {
+    let mut extensions: Vec<_> = settings
+        .settings
+        .extensions
+        .iter()
+        .filter(|(_, kind)| include_work_specs || kind.as_str() != Some(WORK_SPEC))
+        .map(|(extension, _)| extension.clone())
+        .collect();
     extensions.sort_by_key(|extension| (std::cmp::Reverse(extension.len()), extension.clone()));
     let mode = Mode::Sources {
         extensions,

@@ -20,6 +20,11 @@ pub const LONG_JSX_CLASS_NAME: &str = "maintainable/long-jsx-class-name";
 pub const PLAYWRIGHT_STYLE_ASSERTION: &str = "maintainable/playwright-style-assertion";
 pub const COMPLEX_MAPPED_BUTTON: &str = "maintainable/complex-mapped-button";
 pub const SIMILAR_LOOPS: &str = "maintainable/similar-loops";
+pub const WORK_SPEC: &str = "work-spec";
+pub const WORK_TAGS: &[&str] = &[
+    "plan", "do", "impl", "do-type", "do-hook", "fix", "refactor", "add-test", "check", "review",
+    "explain", "question", "reply", "spec",
+];
 pub const TOOL_CHECKS: &[&str] = &[
     "dependency-boundaries",
     "duplication",
@@ -132,6 +137,13 @@ pub struct LoopSimilarity {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct WorkDirectives {
+    pub paths: Vec<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct Settings {
     pub ignore: Vec<String>,
     pub extensions: BTreeMap<String, Value>,
@@ -146,6 +158,7 @@ pub struct Settings {
     pub duplication: Duplication,
     pub loop_similarity: LoopSimilarity,
     pub limits: Limits,
+    pub work_directives: WorkDirectives,
 }
 
 pub struct Resolved {
@@ -317,12 +330,30 @@ fn decode(source: &str, name: &str) -> Result<Settings> {
                                 | "go"
                                 | "gomod"
                                 | "toml"
+                                | WORK_SPEC
                         )
                     ),
                 "unsupported extension mapping {extension}"
             );
         }
         validate_rules(&settings.rules)?;
+        for pattern in &settings.work_directives.paths {
+            ensure!(
+                !pattern.is_empty() && !pattern.starts_with('!'),
+                "use positive work directive path globs"
+            );
+            glob(pattern)?;
+        }
+        if let Some(tags) = &settings.work_directives.tags {
+            let mut seen = BTreeSet::new();
+            for tag in tags {
+                ensure!(
+                    WORK_TAGS.contains(&tag.as_str()),
+                    "unknown work directive {tag}"
+                );
+                ensure!(seen.insert(tag), "duplicate work directive {tag}");
+            }
+        }
         validate_external(&settings)?;
         if let Some(structure) = &settings.file_structure {
             structure.validate().context("fileStructure")?;
@@ -441,6 +472,7 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
         .severity
         .or(settings.duplication.severity);
     settings.limits = project.limits;
+    settings.work_directives = project.work_directives;
     Ok(Resolved {
         settings,
         project: Some(file.display().to_string()),
