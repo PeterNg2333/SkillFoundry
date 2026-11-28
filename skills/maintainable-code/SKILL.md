@@ -56,7 +56,7 @@ Keep related types, transformations, state and error handling together. Split at
 
 For each new helper, wrapper or shared abstraction, identify the responsibility it hides and its current callers. Introduce dependencies and folders with the slice that uses them. Keep a short linear flow together and comments focused on reasons or constraints.
 
-For TypeScript/JavaScript code or check configuration, read [typescript.md](references/typescript.md) for import aliases, const-arrow/export organization and type locality. For native checker changes, read [rust.md](references/rust.md) for file ownership and Rust conventions. For Go project code, read [go.md](references/go.md). Other languages use repository conventions.
+For TypeScript/JavaScript code or check configuration, read [typescript.md](references/typescript.md) for import aliases, const-arrow/export organization and type locality. For native checker changes, read [rust.md](references/rust.md) for file ownership and Rust conventions. For Go project code, read [go.md](references/go.md). For Python project code, read [python.md](references/python.md). Other languages use repository conventions.
 
 ## Verify the result
 

@@ -1,0 +1,8 @@
+{
+  "rule": "max-depth",
+  "findings": {
+    "flagged.js": [4],
+    "flagged.ts": [4],
+    "flagged.py": [4]
+  }
+}

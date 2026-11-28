@@ -1,0 +1,8 @@
+{
+  "rule": "maintainable/single-use-helper",
+  "findings": {
+    "flagged.js": [1],
+    "flagged.ts": [1],
+    "flagged.py": [1]
+  }
+}

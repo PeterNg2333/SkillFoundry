@@ -1,0 +1,7 @@
+{
+  "rule": "prefer-const",
+  "findings": {
+    "flagged.js": [1],
+    "flagged.ts": [1]
+  }
+}

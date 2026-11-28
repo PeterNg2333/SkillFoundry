@@ -8,7 +8,7 @@
 
 | Change | Static check to run |
 | --- | --- |
-| JS/TS fallback decisions, long conditions, or nesting | Run the project's configured lint or [SkillFoundry rules](smells.md), such as `maintainable/fallback-order`, `maintainable/long-condition`, or `max-depth`. Check the rule's severity in `checkignore.json` before running a rule-specific check. Use ESLint's `no-else-return` for an unnecessary `else` after a return. [ESLint rule](https://eslint.org/docs/latest/rules/no-else-return) |
+| JS/TS or Python fallback decisions, long conditions, or nesting | Run the project's configured lint or [SkillFoundry rules](smells.md), such as `maintainable/fallback-order`, `maintainable/long-condition`, or `max-depth`. Check the rule's severity in `checkignore.json` before running a rule-specific check. Use ESLint's `no-else-return` for an unnecessary `else` after a return. [ESLint rule](https://eslint.org/docs/latest/rules/no-else-return) |
 | Module imports or ownership boundaries | Run the compiler for import resolution and the project's declared dependency rules for allowed edges or cycles. SkillFoundry can run `dependency-boundaries` on its configured JS/TS graph. |
 | Repeated implementation | Run `duplication` or the project's clone detector in the feature and its likely peers. Inspect reported pairs to see whether they share a contract. |
 | Test assertions | Run the configured test linter. For assertions a branch can skip, use a framework rule such as Jest or Playwright's `no-conditional-expect`. [Jest rule](https://github.com/jest-community/eslint-plugin-jest/blob/main/docs/rules/no-conditional-expect.md) · [Playwright rule](https://github.com/mskelton/eslint-plugin-playwright/blob/main/docs/rules/no-conditional-expect.md) |

@@ -9,7 +9,7 @@ publish = false
 anyhow = "1.0"
 ast-grep-core = "=0.51.3"
 ast-grep-config = "=0.51.3"
-ast-grep-language = { version = "=0.51.3", default-features = false, features = ["tree-sitter-go", "tree-sitter-javascript", "tree-sitter-typescript"] }
+ast-grep-language = { version = "=0.51.3", default-features = false, features = ["tree-sitter-go", "tree-sitter-javascript", "tree-sitter-python", "tree-sitter-typescript"] }
 clap = { version = "4.6", features = ["derive"] }
 globset = "0.4"
 ignore = "0.4"

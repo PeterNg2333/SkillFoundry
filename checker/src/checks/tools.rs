@@ -25,7 +25,7 @@ pub fn run(
     let (tool, npm_entry) = match check {
         "dependency-boundaries" => ("dependency-cruiser", Some("bin/dependency-cruiser.mjs")),
         "duplication" => ("jscpd", Some("run-jscpd.js")),
-        "python" => ("ruff", None),
+        "python-lint" => ("ruff", None),
         "go-format" => ("gofmt", None),
         _ => unreachable!(),
     };
@@ -56,7 +56,7 @@ pub fn run(
             let scan = match check {
                 "dependency-boundaries" => dependencies(&mut command, &input, report),
                 "duplication" => duplicates(&mut command, &input, report),
-                "python" => python(&command, &input, report),
+                "python-lint" => python(&command, &input, report),
                 "go-format" => go_format(&command, &input, report),
                 _ => unreachable!(),
             }
@@ -89,7 +89,7 @@ fn applies(check: &str, file: &File) -> bool {
     match check {
         "dependency-boundaries" => ecmascript,
         "duplication" => ecmascript || matches!(file.kind.as_str(), "python" | "go"),
-        "python" => file.kind == "python",
+        "python-lint" => file.kind == "python",
         "go-format" => file.kind == "go",
         _ => false,
     }

@@ -9,7 +9,8 @@ use oxc_semantic::{AstNode, Semantic};
 use oxc_span::{GetSpan, Span};
 
 use crate::{
-    config::{COMPLEX_MAPPED_BUTTON, LONG_JSX_CLASS_NAME, PLAYWRIGHT_STYLE_ASSERTION, Policy},
+    catalog::{COMPLEX_MAPPED_BUTTON, LONG_JSX_CLASS_NAME, PLAYWRIGHT_STYLE_ASSERTION},
+    config::Policy,
     report::Report,
 };
 

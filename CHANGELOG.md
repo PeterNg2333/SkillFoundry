@@ -9,6 +9,14 @@
 - Add optional `directives` analysis for `@impl`, `@refactor`, and `@check` comments, and audit skipped findings in the bypass report.
 - Add `/interact` for repository work directives, including `@add-test` and Markdown master specs. Report verified and cleared work in a local activity view.
 - Show Interact work on a live board, with structured test outcomes and an activity history per directive.
+- Add native Python analysis as the default `python` check. It covers syntax, private helpers with one direct call site, cross-directory relative imports, nesting, complexity and file length, and the opt-in long-condition, fallback-order, object-spread-newline and similar-loops rules. Interact directives and statement-scoped `@bypass` comments use `#` comments.
+- Share one implementation of each cross-language rule between JavaScript, TypeScript and Python through a language contract. `capabilities --json` reports `languages` and `ruleLanguages`. The build fails when a declared rule and language lack a parity fixture.
+
+### Migration
+
+- The Ruff tool check is now `python-lint`. `--checks python` selects native Python analysis. `externalChecks: ["python"]` fails validation and names `python-lint`.
+- Python files that earlier counted as unchecked are now checked by default. `maintainable/single-use-helper` reports private Python helpers as errors, as it does for JS/TS. To phase it in, add an override such as `{"files": ["**/*.py"], "rules": {"maintainable/single-use-helper": "warn"}}`.
+- `--rules` without `--checks` also checks Python files. Each requested rule needs a selected language check that implements it. A statement bypass that names a rule the file's language does not implement is invalid.
 
 ## 0.2.0 - 2026-11-18
 

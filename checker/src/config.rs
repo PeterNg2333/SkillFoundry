@@ -12,14 +12,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub use structure::{FileStructure, FileStructureIgnore, FileStructurePattern};
 
-pub const SINGLE_USE_HELPER: &str = "maintainable/single-use-helper";
-pub const OBJECT_SPREAD_NEWLINE: &str = "maintainable/object-spread-newline";
-pub const LONG_CONDITION: &str = "maintainable/long-condition";
-pub const FALLBACK_ORDER: &str = "maintainable/fallback-order";
-pub const LONG_JSX_CLASS_NAME: &str = "maintainable/long-jsx-class-name";
-pub const PLAYWRIGHT_STYLE_ASSERTION: &str = "maintainable/playwright-style-assertion";
-pub const COMPLEX_MAPPED_BUTTON: &str = "maintainable/complex-mapped-button";
-pub const SIMILAR_LOOPS: &str = "maintainable/similar-loops";
+use crate::catalog;
+
 pub const WORK_SPEC: &str = "work-spec";
 pub const WORK_TAGS: &[&str] = &[
     "plan", "do", "impl", "do-type", "do-hook", "fix", "refactor", "add-test", "check", "review",
@@ -28,34 +22,14 @@ pub const WORK_TAGS: &[&str] = &[
 pub const TOOL_CHECKS: &[&str] = &[
     "dependency-boundaries",
     "duplication",
-    "python",
+    "python-lint",
     "go-format",
-];
-
-pub const RULES: &[&str] = &[
-    "prefer-const",
-    "no-var",
-    "func-style",
-    "no-restricted-syntax",
-    "maintainable/cross-directory-imports",
-    "@typescript-eslint/consistent-type-imports",
-    "max-depth",
-    "complexity",
-    "max-lines",
-    SINGLE_USE_HELPER,
-    OBJECT_SPREAD_NEWLINE,
-    LONG_CONDITION,
-    FALLBACK_ORDER,
-    LONG_JSX_CLASS_NAME,
-    PLAYWRIGHT_STYLE_ASSERTION,
-    COMPLEX_MAPPED_BUTTON,
-    SIMILAR_LOOPS,
 ];
 
 pub fn validate_rule_filter(rules: &[String]) -> Result<()> {
     let mut seen = BTreeSet::new();
     for rule in rules {
-        ensure!(RULES.contains(&rule.as_str()), "unknown rule {rule}");
+        ensure!(catalog::known(rule), "unknown rule {rule}");
         ensure!(seen.insert(rule), "duplicate rule {rule}");
     }
     Ok(())
@@ -176,7 +150,7 @@ pub fn glob(pattern: &str) -> Result<GlobMatcher> {
 
 fn validate_rules(rules: &BTreeMap<String, Value>) -> Result<()> {
     for (name, value) in rules {
-        ensure!(RULES.contains(&name.as_str()), "unsupported rule {name}");
+        ensure!(catalog::known(name), "unsupported rule {name}");
         let severity = value
             .as_array()
             .and_then(|values| values.first())
@@ -240,6 +214,10 @@ fn validate_external(settings: &Settings) -> Result<()> {
     let mut checks = BTreeSet::new();
     for check in &settings.external_checks {
         ensure!(
+            check != "python",
+            "external check python is now native Python analysis; use python-lint for Ruff"
+        );
+        ensure!(
             TOOL_CHECKS.contains(&check.as_str()),
             "unknown external check {check}"
         );
@@ -286,7 +264,7 @@ fn validate_external(settings: &Settings) -> Result<()> {
 }
 
 fn bypass_rule(settings: &Settings, rule: &str) -> bool {
-    RULES.contains(&rule)
+    catalog::known(rule)
         || matches!(rule, "jscpd/duplicate" | "gofmt/format")
         || rule.strip_prefix("ruff/").is_some_and(|code| {
             lint_code(code) && code.ends_with(|character: char| character.is_ascii_digit())
@@ -479,16 +457,22 @@ pub fn load(root: &Path, requested: Option<&Path>) -> Result<Resolved> {
     })
 }
 
+/// Rule severities and options for one source file in one language.
 pub struct Policy<'a> {
     rules: BTreeMap<String, Value>,
+    language: &'a str,
     filter: &'a [String],
 }
 
 impl<'a> Policy<'a> {
-    pub fn for_file(settings: &Settings, path: &str, filter: &'a [String]) -> Result<Self> {
-        let mut rules: BTreeMap<_, _> = RULES
-            .iter()
-            .map(|name| (name.to_string(), json!("error")))
+    pub fn for_file(
+        settings: &Settings,
+        path: &str,
+        language: &'a str,
+        filter: &'a [String],
+    ) -> Result<Self> {
+        let mut rules: BTreeMap<_, _> = catalog::ids()
+            .map(|name| (name.to_owned(), json!("error")))
             .collect();
         rules.extend(settings.rules.clone());
         for rule_override in &settings.overrides {
@@ -503,11 +487,20 @@ impl<'a> Policy<'a> {
                 rules.extend(rule_override.rules.clone());
             }
         }
-        Ok(Self { rules, filter })
+        Ok(Self {
+            rules,
+            language,
+            filter,
+        })
     }
 
+    /// The enabled severity, or None when the rule is off, filtered out or not
+    /// implemented for this file's language.
     pub fn severity(&self, name: &str) -> Option<&'static str> {
         if !self.filter.is_empty() && !self.filter.iter().any(|rule| rule == name) {
+            return None;
+        }
+        if !catalog::supports(name, self.language) {
             return None;
         }
         rule_severity(self.rules.get(name)?)

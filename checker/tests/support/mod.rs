@@ -38,6 +38,8 @@ impl Project {
     }
 }
 
+// Each test crate compiles this module separately; not every crate uses this helper.
+#[allow(dead_code)]
 pub fn diagnostic<'a>(report: &'a Value, rule: &str) -> Option<&'a Value> {
     report["diagnostics"]
         .as_array()

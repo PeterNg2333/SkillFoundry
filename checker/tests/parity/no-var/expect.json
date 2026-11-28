@@ -1,0 +1,7 @@
+{
+  "rule": "no-var",
+  "findings": {
+    "flagged.js": [1],
+    "flagged.ts": [1]
+  }
+}

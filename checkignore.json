@@ -3,7 +3,8 @@
     "Write code, comments, diagnostics, fixtures, and repository documentation in English.",
     "Use rustfmt and Clippy for Rust. Keep parsing library types inside checker/src/checks/.",
     "Keep distribution scripts on the Python standard library and run them through the POSIX shell entry points.",
-    "Add a CLI regression before changing checker behavior."
+    "Add a CLI regression before changing checker behavior.",
+    "checker/tests/parity/ holds rule fixtures that must contain findings, so this policy ignores it."
   ],
   "extensions": {
     ".py": "python",
@@ -11,7 +12,7 @@
     ".json": "json",
     ".toml": "toml"
   },
-  "ignore": [],
+  "ignore": ["checker/tests/parity/**"],
   "bypasses": [],
   "pythonRules": ["E4", "E7", "E9", "F"]
 }

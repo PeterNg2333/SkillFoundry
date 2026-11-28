@@ -1,19 +1,28 @@
 mod ast;
+mod decisions;
 mod directives;
+mod helpers;
+mod imports;
 mod javascript;
+mod language;
+mod literals;
 mod loop_similarity;
 mod manifests;
 mod metrics;
+mod python;
 mod semantics;
+mod source;
 mod tools;
 mod ui;
 
 use crate::{
-    config::{RULES, Resolved, TOOL_CHECKS, WORK_SPEC, WORK_TAGS, glob, validate_rule_filter},
+    catalog::{self, LANGUAGES, RULES},
+    config::{Resolved, TOOL_CHECKS, WORK_SPEC, WORK_TAGS, glob, validate_rule_filter},
     report::{CheckStatus, Report},
     selection,
 };
 use anyhow::{Context, Result, ensure};
+use language::Language;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -35,6 +44,7 @@ pub const DEFAULT_CHECKS: &[&str] = &[
     "go",
     "javascript",
     "typescript",
+    "python",
 ];
 pub const FILE_STRUCTURE: &str = "file-structure";
 const STRUCTURE_PATH: &str = "file-structure/path";
@@ -45,6 +55,7 @@ const CATALOG: &[&str] = &[
     "go",
     "javascript",
     "typescript",
+    "python",
     "comments",
     "directives",
     FILE_STRUCTURE,
@@ -52,8 +63,11 @@ const CATALOG: &[&str] = &[
 
 pub fn capabilities() -> Value {
     let checks: Vec<_> = CATALOG.iter().chain(TOOL_CHECKS).copied().collect();
-    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":checks, "rules":RULES,
-        "externalChecks":{"dependency-boundaries":"dependency-cruiser","duplication":"jscpd","python":"ruff","go-format":"gofmt"},
+    let rules: Vec<_> = catalog::ids().collect();
+    let languages: BTreeMap<_, _> = RULES.iter().map(|rule| (rule.id, rule.languages)).collect();
+    json!({"engine":"rust", "version":env!("CARGO_PKG_VERSION"), "checks":checks, "rules":rules,
+        "languages":LANGUAGES, "ruleLanguages":languages,
+        "externalChecks":{"dependency-boundaries":"dependency-cruiser","duplication":"jscpd","python-lint":"ruff","go-format":"gofmt"},
         "libraries":["ast-grep", "Oxc", "ignore", "globset", "serde_json", "termtree", "toml"],
         "unsupported":[{"id":"typecheck","reason":"Syntax and local binding analysis do not replace the project's type checker."}],
         "modelReview":{"implemented":false,"default":"off"},
@@ -83,10 +97,14 @@ pub fn run(
     validate(names)?;
     validate_rule_filter(rules)?;
     let selected = |name: &str| names.iter().any(|selected| selected == name);
-    ensure!(
-        rules.is_empty() || selected("javascript") || selected("typescript"),
-        "--rules requires a javascript or typescript check"
-    );
+    for rule in rules {
+        let languages = catalog::rule(rule).map_or(&[][..], |rule| rule.languages);
+        ensure!(
+            languages.iter().any(|language| selected(language)),
+            "--rules {rule} requires one of the {} checks",
+            languages.join(", ")
+        );
+    }
     let mut counts = BTreeMap::new();
     let mut checked = BTreeSet::new();
     let mut loop_files = Vec::new();
@@ -108,10 +126,10 @@ pub fn run(
         );
         let main = selected(&kind) && kind != "gomod" && !TOOL_CHECKS.contains(&kind.as_str());
         let dependencies = manifest && selected("dependencies");
-        let comments =
-            matches!(kind.as_str(), "go" | "javascript" | "typescript") && selected("comments");
+        let language = Language::of(&kind, &file);
+        let comments = (kind == "go" || language.is_some()) && selected("comments");
         let directives = selected("directives")
-            && matches!(kind.as_str(), "javascript" | "typescript" | WORK_SPEC)
+            && (language.is_some() || kind == WORK_SPEC)
             && (work_paths.is_empty() || work_paths.iter().any(|path| path.is_match(&file)));
         if !main && !dependencies && !comments && !directives {
             continue;
@@ -136,19 +154,22 @@ pub fn run(
                     comments,
                     report,
                 )?,
-                "javascript" | "typescript" => {
-                    if let Some(file) = javascript::check(
+                _ if let Some(language) = language => {
+                    if let Some(file) = source::check(
                         &SourceFile {
                             project: root,
                             path: &file,
                             text: source,
                             kind: &kind,
                         },
+                        language,
                         &settings.settings,
-                        main,
-                        comments,
-                        directives,
-                        rules,
+                        &source::Scope {
+                            inspect: main,
+                            comments,
+                            directives,
+                            rules,
+                        },
                         report,
                     )? {
                         loop_files.push(file);

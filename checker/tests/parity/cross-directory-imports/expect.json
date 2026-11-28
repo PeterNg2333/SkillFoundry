@@ -1,0 +1,8 @@
+{
+  "rule": "maintainable/cross-directory-imports",
+  "findings": {
+    "src/app/main.js": [1],
+    "src/app/main.ts": [1],
+    "pkg/app/main.py": [1, 4]
+  }
+}

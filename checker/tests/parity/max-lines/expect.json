@@ -1,0 +1,8 @@
+{
+  "rule": "max-lines",
+  "findings": {
+    "flagged.js": [1],
+    "flagged.ts": [1],
+    "flagged.py": [1]
+  }
+}

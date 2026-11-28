@@ -31,7 +31,7 @@
 
 ## Source notes and master specs
 
-Use one directive per line. Put inline directives in actual JS/TS comments near their target. Put shared decisions and acceptance criteria in a Markdown-formatted `.spec` file. A master spec can coordinate multiple source files using a repository-relative scope. The scanner reads directive lines in the `## Work` section, excluding fenced and indented code examples. Source files may use `// @spec ./floor-selection.spec` to link back to the master. Paths in that link are relative to the source file.
+Use one directive per line. Put inline directives in actual JS/TS or Python comments near their target. Put shared decisions and acceptance criteria in a Markdown-formatted `.spec` file. A master spec can coordinate multiple source files using a repository-relative scope. The scanner reads directive lines in the `## Work` section, excluding fenced and indented code examples. Source files may use `// @spec ./floor-selection.spec`, or `# @spec ./floor-selection.spec` in Python, to link back to the master. Paths in that link are relative to the source file.
 
 ```text
 # Floor selection

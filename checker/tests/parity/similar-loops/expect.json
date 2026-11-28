@@ -1,0 +1,8 @@
+{
+  "rule": "maintainable/similar-loops",
+  "findings": {
+    "a.js": [3],
+    "c.ts": [3],
+    "e.py": [3]
+  }
+}

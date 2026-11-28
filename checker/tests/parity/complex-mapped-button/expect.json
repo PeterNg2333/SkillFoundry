@@ -1,0 +1,7 @@
+{
+  "rule": "maintainable/complex-mapped-button",
+  "findings": {
+    "flagged.jsx": [2],
+    "flagged.tsx": [2]
+  }
+}

@@ -1,66 +1,20 @@
-use super::SourceFile;
-use super::ast::{self, SyntaxNode};
+//! `max-depth`, `complexity` and `max-lines` with per-language structure roles.
+
+use super::{
+    SourceFile,
+    ast::{self, SyntaxNode},
+    language::Syntax,
+};
 use crate::{config::Policy, report::Report};
 
-fn function(node: &SyntaxNode<'_>) -> bool {
-    matches!(
-        node.kind().as_ref(),
-        "function_declaration"
-            | "function_expression"
-            | "generator_function"
-            | "generator_function_declaration"
-            | "arrow_function"
-            | "method_definition"
-    )
-}
-
-fn control(node: &SyntaxNode<'_>) -> bool {
-    if node.kind() == "if_statement"
-        && node
-            .parent()
-            .is_some_and(|parent| parent.kind() == "else_clause")
-    {
-        return false;
-    }
-    matches!(
-        node.kind().as_ref(),
-        "if_statement"
-            | "for_statement"
-            | "for_in_statement"
-            | "while_statement"
-            | "do_statement"
-            | "switch_statement"
-            | "try_statement"
-            | "with_statement"
-    )
-}
-
-fn branches(node: &SyntaxNode<'_>) -> usize {
-    if function(node) {
+fn branches(syntax: &dyn Syntax, node: &SyntaxNode<'_>) -> usize {
+    if syntax.is_function(node) {
         return 0;
     }
-    let branch = matches!(
-        node.kind().as_ref(),
-        "if_statement"
-            | "for_statement"
-            | "for_in_statement"
-            | "while_statement"
-            | "do_statement"
-            | "ternary_expression"
-            | "switch_case"
-            | "catch_clause"
-            | "assignment_pattern"
-            | "optional_chain"
-    ) || node.field("operator").is_some_and(|operator| {
-        matches!(
-            operator.text().as_ref(),
-            "&&" | "||" | "??" | "&&=" | "||=" | "??="
-        )
-    });
-    usize::from(branch)
+    usize::from(syntax.is_branch(node))
         + node
             .named_children()
-            .map(|child| branches(&child))
+            .map(|child| branches(syntax, &child))
             .sum::<usize>()
 }
 
@@ -90,6 +44,7 @@ fn warn(
 pub fn check(
     root: &SyntaxNode<'_>,
     input: &SourceFile<'_>,
+    syntax: &dyn Syntax,
     policy: &Policy<'_>,
     report: &mut Report,
 ) {
@@ -98,11 +53,11 @@ pub fn check(
     let mut max_depth = 0;
     let mut max_complexity = 0;
     for node in root.dfs() {
-        if control(&node) {
+        if syntax.is_nesting(&node) {
             let depth = 1 + node
                 .ancestors()
-                .take_while(|ancestor| !function(ancestor))
-                .filter(control)
+                .take_while(|ancestor| !syntax.is_function(ancestor))
+                .filter(|ancestor| syntax.is_nesting(ancestor))
                 .count();
             max_depth = max_depth.max(depth);
             warn(
@@ -115,10 +70,10 @@ pub fn check(
                 report,
             );
         }
-        if function(&node) {
+        if syntax.is_function(&node) {
             let complexity = 1 + node
                 .named_children()
-                .map(|child| branches(&child))
+                .map(|child| branches(syntax, &child))
                 .sum::<usize>();
             max_complexity = max_complexity.max(complexity);
             warn(

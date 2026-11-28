@@ -1,0 +1,8 @@
+{
+  "rule": "maintainable/long-condition",
+  "findings": {
+    "flagged.js": [1, 2],
+    "flagged.ts": [1, 2],
+    "flagged.py": [1, 3]
+  }
+}

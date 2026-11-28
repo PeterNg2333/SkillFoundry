@@ -1,0 +1,6 @@
+{
+  "rule": "@typescript-eslint/consistent-type-imports",
+  "findings": {
+    "flagged.ts": [1]
+  }
+}

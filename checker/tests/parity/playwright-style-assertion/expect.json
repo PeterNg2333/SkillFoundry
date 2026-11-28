@@ -1,0 +1,7 @@
+{
+  "rule": "maintainable/playwright-style-assertion",
+  "findings": {
+    "flow.spec.js": [4],
+    "flow.spec.ts": [4]
+  }
+}

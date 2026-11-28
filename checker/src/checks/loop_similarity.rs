@@ -1,3 +1,5 @@
+//! `maintainable/similar-loops`: cross-file fingerprints of loop bodies in one language family.
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ops::Range,
@@ -5,9 +7,15 @@ use std::{
     rc::Rc,
 };
 
-use super::{SourceFile, ast::SyntaxNode, directives::LoopBypass, semantics::LoopInputs};
+use super::{
+    SourceFile,
+    ast::SyntaxNode,
+    directives::LoopBypass,
+    language::{Facts, Import, Language, Syntax},
+};
 use crate::{
-    config::{LoopSimilarity, SIMILAR_LOOPS, Settings, rule_severity},
+    catalog::SIMILAR_LOOPS,
+    config::{LoopSimilarity, Settings, rule_severity},
     report::{Bypass, Finding, Location, Report, source_location},
     selection::normalized,
 };
@@ -30,7 +38,9 @@ struct Loop {
 
 pub struct File {
     path: String,
-    imports: Vec<String>,
+    family: &'static str,
+    syntax: &'static dyn Syntax,
+    imports: Vec<Import>,
     severity: Option<&'static str>,
     loops: Vec<Loop>,
     bypasses: Vec<LoopBypass>,
@@ -43,25 +53,30 @@ pub fn requested(settings: &Settings, rules: &[String]) -> bool {
             .any(|rules| rules.get(SIMILAR_LOOPS).and_then(rule_severity).is_some())
 }
 
+struct Body<'a> {
+    syntax: &'a dyn Syntax,
+    range: Range<usize>,
+    bindings: &'a BTreeMap<usize, usize>,
+}
+
 fn tokens(
     node: &SyntaxNode<'_>,
-    loop_range: &Range<usize>,
-    bindings: &BTreeMap<usize, usize>,
+    body: &Body<'_>,
     locals: &mut BTreeMap<usize, usize>,
     output: &mut Vec<Token>,
 ) {
     let kind = node.kind();
-    if matches!(kind.as_ref(), "comment" | ";" | "type_annotation") {
+    if body.syntax.skips_token(&kind) {
         return;
     }
     let children = node.children();
     if children.len() > 0 {
         for child in children {
-            tokens(&child, loop_range, bindings, locals, output);
+            tokens(&child, body, locals, output);
         }
     } else if kind == "identifier"
-        && let Some(declaration) = bindings.get(&node.range().start)
-        && loop_range.contains(declaration)
+        && let Some(declaration) = body.bindings.get(&node.range().start)
+        && body.range.contains(declaration)
     {
         let next = locals.len();
         output.push(Token::Local(*locals.entry(*declaration).or_insert(next)));
@@ -73,21 +88,18 @@ fn tokens(
 pub fn collect(
     root: &SyntaxNode<'_>,
     input: &SourceFile<'_>,
-    inputs: LoopInputs,
+    language: Language,
+    facts: Facts,
     severity: Option<&'static str>,
     options: LoopSimilarity,
     bypasses: Vec<LoopBypass>,
 ) -> File {
+    let syntax = language.syntax();
     let mut loops = Vec::new();
     if severity.is_some() {
         let minimum = options.min_body_tokens.expect("embedded minimum body size");
-        for node in root.dfs().filter(|node| {
-            matches!(
-                node.kind().as_ref(),
-                "for_statement" | "for_in_statement" | "while_statement" | "do_statement"
-            )
-        }) {
-            let Some(body) = node.field("body") else {
+        for node in root.dfs().filter(|node| node.is_named()) {
+            let Some(body) = syntax.loop_body(&node) else {
                 continue;
             };
             if body.dfs().any(|node| node.is_error() || node.is_missing()) {
@@ -96,8 +108,11 @@ pub fn collect(
             let mut body_tokens = Vec::new();
             tokens(
                 &body,
-                &node.range(),
-                &inputs.bindings,
+                &Body {
+                    syntax,
+                    range: node.range(),
+                    bindings: &facts.bindings,
+                },
                 &mut BTreeMap::new(),
                 &mut body_tokens,
             );
@@ -126,48 +141,51 @@ pub fn collect(
     }
     File {
         path: input.path.to_owned(),
-        imports: inputs.imports,
+        family: language.family(),
+        syntax,
+        imports: facts.imports,
         severity,
         loops,
         bypasses,
     }
 }
 
+/// Selected files an import refers to.
 fn resolve_import(
     root: &Path,
-    file: &str,
-    specifier: &str,
+    file: &File,
+    import: &Import,
     ids: &BTreeMap<&str, usize>,
-) -> Option<usize> {
-    let base = normalized(&root.join(file).with_file_name("").join(specifier));
-    let relative = base.strip_prefix(root).ok()?.to_str()?.replace('\\', "/");
-    if let Some(id) = ids.get(relative.as_str()) {
-        return Some(*id);
+) -> Vec<usize> {
+    let base = if import.relative {
+        let base = normalized(&root.join(&file.path).with_file_name("").join(&import.path));
+        let Some(relative) = base.strip_prefix(root).ok().and_then(Path::to_str) else {
+            return Vec::new();
+        };
+        relative.replace('\\', "/")
+    } else {
+        import.path.clone()
+    };
+    let find = |candidate: &String| {
+        ids.get(candidate.as_str()).copied().or_else(|| {
+            if import.relative {
+                return None;
+            }
+            // An absolute module can live below a source root such as `src/`.
+            let suffix = format!("/{candidate}");
+            let mut matches = ids.iter().filter(|(path, _)| path.ends_with(&suffix));
+            let first = matches.next().map(|(_, id)| *id);
+            first.filter(|_| matches.next().is_none())
+        })
+    };
+    let candidates = file.syntax.module_files(&base, &import.members);
+    // Python's `from . import a, b` can name several modules; the member candidates come first.
+    let (members, module) = candidates.split_at(2 * import.members.len());
+    let targets: Vec<_> = members.iter().filter_map(find).collect();
+    if !targets.is_empty() {
+        return targets;
     }
-    let alternatives: &[(&str, &[&str])] = &[
-        (".js", &[".ts", ".tsx", ".jsx"]),
-        (".mjs", &[".mts"]),
-        (".cjs", &[".cts"]),
-    ];
-    for (extension, replacements) in alternatives {
-        if let Some(stem) = relative.strip_suffix(extension) {
-            return replacements
-                .iter()
-                .find_map(|extension| ids.get(format!("{stem}{extension}").as_str()).copied());
-        }
-    }
-    [
-        ".ts",
-        ".tsx",
-        ".js",
-        ".jsx",
-        "/index.ts",
-        "/index.tsx",
-        "/index.js",
-        "/index.jsx",
-    ]
-    .into_iter()
-    .find_map(|suffix| ids.get(format!("{relative}{suffix}").as_str()).copied())
+    module.iter().find_map(find).into_iter().collect()
 }
 
 struct Graph {
@@ -187,13 +205,13 @@ impl Graph {
             neighbors: vec![BTreeSet::new(); files.len()],
         };
         for (index, file) in files.iter().enumerate() {
-            for specifier in &file.imports {
-                if let Some(target) = resolve_import(root, &file.path, specifier, &ids)
-                    .filter(|target| *target != index)
-                {
-                    graph.outgoing[index].insert(target);
-                    graph.neighbors[index].insert(target);
-                    graph.neighbors[target].insert(index);
+            for import in &file.imports {
+                for target in resolve_import(root, file, import, &ids) {
+                    if target != index && files[target].family == file.family {
+                        graph.outgoing[index].insert(target);
+                        graph.neighbors[index].insert(target);
+                        graph.neighbors[target].insert(index);
+                    }
                 }
             }
         }
@@ -276,6 +294,9 @@ pub fn finish(root: &Path, mut files: Vec<File>, options: LoopSimilarity, report
         .collect();
     for (position, &(left_index, left_severity)) in candidates.iter().enumerate() {
         for &(right_index, right_severity) in &candidates[position + 1..] {
+            if files[left_index].family != files[right_index].family {
+                continue;
+            }
             let [left, right] = files
                 .get_disjoint_mut([left_index, right_index])
                 .expect("distinct files");

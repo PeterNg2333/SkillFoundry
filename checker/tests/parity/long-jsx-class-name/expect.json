@@ -1,0 +1,7 @@
+{
+  "rule": "maintainable/long-jsx-class-name",
+  "findings": {
+    "flagged.jsx": [1],
+    "flagged.tsx": [1]
+  }
+}

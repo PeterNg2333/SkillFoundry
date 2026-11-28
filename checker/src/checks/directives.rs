@@ -1,8 +1,11 @@
+//! Work directives in source comments and master specs, and audited statement-scoped bypasses.
+
 use std::ops::Range;
 
-use super::{SourceFile, ast::SyntaxNode};
+use super::{SourceFile, ast::SyntaxNode, language::Syntax};
 use crate::{
-    config::{Policy, RULES, SIMILAR_LOOPS, WORK_TAGS, WorkDirectives},
+    catalog::{self, SIMILAR_LOOPS},
+    config::{Policy, WORK_TAGS, WorkDirectives},
     report::{Bypass, Directive, Finding, Report, source_location},
 };
 
@@ -39,29 +42,6 @@ impl LoopBypass {
             });
         }
     }
-}
-
-fn bypass_target(node: &SyntaxNode<'_>, source: &str) -> Option<Range<usize>> {
-    let line_start = source[..node.range().start]
-        .rfind('\n')
-        .map_or(0, |end| end + 1);
-    if !source[line_start..node.range().start].trim().is_empty()
-        || !node.parent().is_some_and(|parent| {
-            matches!(
-                parent.kind().as_ref(),
-                "program" | "statement_block" | "switch_case" | "switch_default"
-            )
-        })
-    {
-        return None;
-    }
-    node.next_all()
-        .find(|next| next.is_named() && next.kind() != "comment")
-        .filter(|next| {
-            let kind = next.kind();
-            kind.ends_with("_statement") || kind.ends_with("_declaration")
-        })
-        .map(|next| next.range())
 }
 
 fn record_work(
@@ -151,6 +131,7 @@ pub fn check_spec(file: &str, source: &str, work: &WorkDirectives, report: &mut 
 pub fn check(
     root: &SyntaxNode<'_>,
     input: &SourceFile<'_>,
+    syntax: &dyn Syntax,
     style_policy: Option<&Policy<'_>>,
     work: Option<&WorkDirectives>,
     first_finding: usize,
@@ -160,14 +141,10 @@ pub fn check(
     let mut loop_bypasses = Vec::new();
     for node in root.dfs().filter(|node| node.kind() == "comment") {
         let range = node.range();
-        let comment = &input.text[range.clone()];
-        let Some(body) = comment
-            .strip_prefix("//")
-            .or_else(|| comment.strip_prefix("/*")?.strip_suffix("*/"))
-        else {
+        let Some((marker, body)) = syntax.comment_body(&input.text[range.clone()]) else {
             continue;
         };
-        let mut line_offset = range.start + 2;
+        let mut line_offset = range.start + marker;
         for line in body.split_inclusive('\n') {
             let trimmed = line.trim_start();
             let tag = trimmed.strip_prefix('*').unwrap_or(trimmed).trim_start();
@@ -181,9 +158,9 @@ pub fn check(
                         .split_once("--")
                         .map(|(rule, reason)| (rule.trim(), reason.trim()));
                     if let Some((rule, reason)) = details
-                        && RULES.contains(&rule)
+                        && catalog::supports(rule, input.kind)
                         && !reason.is_empty()
-                        && let Some(target) = bypass_target(&node, input.text)
+                        && let Some(target) = syntax.bypass_target(&node, input.text)
                     {
                         if rule == SIMILAR_LOOPS {
                             if style_policy.is_some_and(|policy| policy.severity(rule).is_some()) {

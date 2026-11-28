@@ -1,0 +1,7 @@
+{
+  "rule": "no-restricted-syntax",
+  "findings": {
+    "flagged.js": [1, 2],
+    "flagged.ts": [1, 2]
+  }
+}

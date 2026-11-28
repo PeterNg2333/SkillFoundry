@@ -23,13 +23,13 @@ Resolve the named files or feature, then read the relevant declarations, callers
 
 ### `maintainable/single-use-helper` · Deterministic
 
-A private JS/TS helper with one direct call site adds a jump for the reader. The existing CLI checks resolved bindings and reports the declaration. See [native rule scope and bypasses](checks.md#local-exceptions-and-work-directives) for the precise match and exclusions.
+A private JS/TS or Python helper with one direct call site adds a jump for the reader. The existing CLI checks resolved bindings and reports the declaration. See [native rule scope and bypasses](checks.md#local-exceptions-and-work-directives) for the precise match and exclusions.
 
 In the example below, `get` only forwards the order lookup and has one direct caller. The revised example keeps the lookup where its result is used. A helper with multiple callers falls outside this signal. Review resource ownership and behavior before deciding whether a reported helper should be inlined.
 
 ### `maintainable/object-spread-newline` · Deterministic
 
-Separate entries with line breaks in a JavaScript or TypeScript object literal that has a spread and at least three other properties. The checker reports one finding at the object when adjacent entries share a line. The rule defaults to off. To opt in, add this rule to the project's `checkignore.json`.
+Separate entries with line breaks in a JavaScript or TypeScript object literal that has a spread and at least three other properties, or a Python dict literal with a `**` unpacking and at least three other entries. The checker reports one finding at the object when adjacent entries share a line. The rule defaults to off. To opt in, add this rule to the project's `checkignore.json`.
 
 ```json
 {
@@ -43,16 +43,16 @@ For example, expand `{ ...data, id, source, target }` so each entry has its own 
 
 ### `maintainable/long-condition` · Deterministic
 
-An `if` condition that joins four or more terms with `&&` or `||` can hide the order of decisions. The JavaScript and TypeScript checker reports one finding per `if`. Parentheses, negation and line breaks do not change the count. A function call, comparison or `??` expression counts as one term. The rule defaults to off. Set `"maintainable/long-condition": "warn"` in the project's `checkignore.json` to enable it.
+An `if` condition that joins four or more terms with `&&` or `||`, or `and` or `or` in Python, can hide the order of decisions. The checker reports one finding per `if`, `else if` or `elif`. Parentheses, negation and line breaks do not change the count. A function call, comparison or `??` expression counts as one term. The rule defaults to off. Set `"maintainable/long-condition": "warn"` in the project's `checkignore.json` to enable it.
 
 For example, split `if (strict && !building && !level && !kiosk)` into an outer `if (strict)` and an inner `if (!building && !level && !kiosk)`. Preserve short-circuit behavior when separating conditions that call functions.
 
 ### `maintainable/fallback-order` · Deterministic
 
-Make fallback precedence readable from top to bottom. The JavaScript and TypeScript checker warns on two shapes:
+Make fallback precedence readable from top to bottom. The checker warns on two shapes in JS/TS and Python:
 
-- An `else` branch whose only statement assigns a ternary, such as `else mode = mobile ? 'mobile' : 'desktop'`.
-- Consecutive `if` statements in the same statement list that start with the same variable's `=== null` test followed by `&&` and each only assign to that variable. The finding points to the repeated guard.
+- An `else` branch whose only statement assigns a ternary, such as `else mode = mobile ? 'mobile' : 'desktop'` or Python's `mode = "mobile" if mobile else "desktop"`.
+- Consecutive `if` statements in the same statement list that start with the same variable's `=== null` or `is None` test followed by `&&` or `and` and each only assign to that variable. The finding points to the repeated guard.
 
 A branch may use braces. A standalone ternary, a guard for a different variable, or independent state updates stay within the rule's limits. For an ordered choice, `input.mode ?? inferMode()` can retain an explicit value and defer inference. Within `inferMode`, early returns can express each choice in priority order. Preserve short-circuit behavior, particularly when a condition calls a function.
 
@@ -86,7 +86,7 @@ These three rules default to off. Set any of their values to `"warn"` under `rul
 
 ### `maintainable/similar-loops` · Deterministic
 
-Flag JS/TS loop bodies in different files that could need the same maintenance change. The checker compares `for`, `for…in`, `for…of`, `while` and `do…while` bodies. It replaces ordinary identifier uses of bindings declared inside the loop with local identifiers in first-use order. It preserves names from outside the loop, property names, literals and operators. The similarity score is the number of shared three-token sequences divided by the number present in either body, counting repetitions. Comments, semicolons and type annotations are ignored.
+Flag JS/TS or Python loop bodies in different files that could need the same maintenance change. The checker compares JS/TS `for`, `for…in`, `for…of`, `while` and `do…while` bodies with each other, and Python `for` and `while` bodies with each other. It replaces ordinary identifier uses of bindings declared inside the loop with local identifiers in first-use order. It preserves names from outside the loop, property names, literals and operators. The similarity score is the number of shared three-token sequences divided by the number present in either body, counting repetitions. Comments, semicolons and type annotations are ignored.
 
 Two loops that test `row.active` and push `normalizeId(row.id)` can still match when one calls the variable `item`. A loop that checks `item.expired` and calls `archive(item.id)` has a different body. Similar bodies can be intentional when iteration domains, lifecycle or ownership differ. Verify the loop headers and callers before sharing the implementation. See [thresholds and bypasses](checks.md#similar-loop-bodies).
 

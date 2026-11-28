@@ -8,13 +8,16 @@ fn explicitly_requested_missing_tools_report_incomplete_coverage() {
         ("main.py", "print('hello')\n"),
         ("main.go", "package main\n"),
     ]);
+    // Native Go and Python analysis need no tools.
     let report = project.success(&["check", "--json"], true);
-    assert_eq!(report["summary"]["checked"], 1, "{report}");
-    let (code, report, stderr) =
-        project.run(&["check", "--json", "--checks", "python,go-format"], true);
+    assert_eq!(report["summary"]["checked"], 2, "{report}");
+    let (code, report, stderr) = project.run(
+        &["check", "--json", "--checks", "python-lint,go-format"],
+        true,
+    );
     assert_eq!(code, 2, "{stderr}\n{report}");
     assert_eq!(report["summary"]["checked"], 0, "{report}");
-    for (check, tool) in [("python", "ruff"), ("go-format", "gofmt")] {
+    for (check, tool) in [("python-lint", "ruff"), ("go-format", "gofmt")] {
         let coverage = report["checks"]
             .as_array()
             .unwrap()
@@ -37,7 +40,7 @@ fn no_matching_files_do_not_require_tools() {
             "check",
             "--json",
             "--checks",
-            "dependency-boundaries,duplication,python,go-format",
+            "dependency-boundaries,duplication,python-lint,go-format",
         ],
         true,
     );
@@ -61,7 +64,7 @@ fn declared_checks_use_real_tools_and_respect_selection() {
         (
             "checkignore.json",
             r#"{
-            "externalChecks": ["dependency-boundaries", "duplication", "python", "go-format"],
+            "externalChecks": ["dependency-boundaries", "duplication", "python-lint", "go-format"],
             "dependencyBoundaries": {
                 "tsConfig": "tsconfig.json",
                 "forbidden": [
@@ -142,7 +145,7 @@ fn declared_checks_use_real_tools_and_respect_selection() {
     for rule in [
         "dependency-boundaries",
         "duplication",
-        "python",
+        "python-lint",
         "go-format",
     ] {
         assert!(

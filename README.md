@@ -27,6 +27,7 @@ skills/maintainable-code/bin/maintainable-check.exe capabilities --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks dependencies,json --json
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks file-structure
+skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --checks python -- app
 skills/maintainable-code/bin/maintainable-check.exe check --root /path/to/project --rules maintainable/single-use-helper -- src/routes
 skills/maintainable-code/bin/maintainable-check.exe select --root /path/to/project --json
 ```
@@ -37,13 +38,13 @@ In the skill, use `$maintainable-code /check single-use helpers in src/routes` f
 
 Use `$maintainable-code /interact` to find work requests in JS/TS comments and Markdown-formatted `.spec` files, execute ready items, and open a live read-only board with test results. This workflow uses Python 3.10+, Git, and the packaged checker. [Interact directives, policy, and completion evidence](skills/maintainable-code/references/interact.md)
 
-Native coverage includes JS/TS syntax and AST style, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. Opt in to JS/TS dependency boundaries with dependency-cruiser, duplication with jscpd, Python lint with Ruff, and Go formatting with gofmt. The checker reports missing tools and incomplete coverage. Run project type checking separately.
+Native coverage includes JS/TS syntax and AST style, Python syntax, JSON/TOML syntax, manifest dependency counts, Go syntax/imports/functions, and optional comments. JavaScript, TypeScript and Python share one implementation of the helper, import, nesting, complexity, decision, literal and similar-loop rules; `capabilities --json` lists each rule's languages. Opt in to JS/TS dependency boundaries with dependency-cruiser, duplication with jscpd, Python lint with Ruff (`python-lint`), and Go formatting with gofmt. The checker reports missing tools and incomplete coverage. Run project type checking separately.
 
 Use [`checkignore.json` as the project policy declaration](skills/maintainable-code/references/checks.md#configuration-and-selection). `styleNotes` explains the conventions to agents, `rules` enforces native style, and `bypasses` records scoped exceptions with reasons. `externalChecks` adds optional checks to the project's default run. See the [architecture and limits](docs/architecture.md) and [migration notes](CHANGELOG.md).
 
 `fileStructure` declares nested directories, accepted file types and ignored subtrees in the same policy file. Run `check --checks file-structure` to show the declared tree and report violations, or add `--json` for tooling. [File structure configuration](skills/maintainable-code/references/checks.md#file-structure)
 
-Run `$mc-init` to set up `checkignore.json` from a project's existing conventions. Run `$mc-init questionnaire` to decide languages, style, and exclusions interactively. When both skills are installed together, `$maintainable-code /init [auto|questionnaire]` uses the same workflow. SkillFoundry's [own declaration](checkignore.json) uses the embedded and Git exclusions. Rust and shell checks run through the repository's shell entry points. Python lint is available through `--checks python`.
+Run `$mc-init` to set up `checkignore.json` from a project's existing conventions. Run `$mc-init questionnaire` to decide languages, style, and exclusions interactively. When both skills are installed together, `$maintainable-code /init [auto|questionnaire]` uses the same workflow. SkillFoundry's [own declaration](checkignore.json) uses the embedded and Git exclusions. Rust and shell checks run through the repository's shell entry points. Native Python checks run by default, and Ruff lint is available through `--checks python-lint`.
 
 For a cross-build, set `CHECKER_TARGET` to an installed Rust target triple and provide its linker/C toolchain. Tests and Clippy still run on the host:
 

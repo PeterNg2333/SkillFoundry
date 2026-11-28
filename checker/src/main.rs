@@ -1,3 +1,4 @@
+mod catalog;
 mod checks;
 mod config;
 mod report;
@@ -36,7 +37,7 @@ enum Command {
             long,
             value_delimiter = ',',
             conflicts_with = "list",
-            help = "Exact native JS/TS policy rule IDs from capabilities"
+            help = "Exact native policy rule IDs from capabilities"
         )]
         rules: Vec<String>,
         #[arg(long)]
@@ -65,7 +66,7 @@ fn run() -> Result<i32> {
                 let defaults = if rules.is_empty() {
                     checks::DEFAULT_CHECKS
                 } else {
-                    &["javascript", "typescript"]
+                    catalog::LANGUAGES
                 };
                 checks.extend(defaults.iter().map(|name| (*name).to_owned()));
                 if rules.is_empty() {

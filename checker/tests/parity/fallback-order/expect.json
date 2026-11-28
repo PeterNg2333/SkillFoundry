@@ -1,0 +1,8 @@
+{
+  "rule": "maintainable/fallback-order",
+  "findings": {
+    "flagged.js": [2, 5],
+    "flagged.ts": [2, 5],
+    "flagged.py": [2, 8]
+  }
+}
